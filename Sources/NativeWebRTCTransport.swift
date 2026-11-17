@@ -85,7 +85,7 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
                     sdpMLineIndex: Int32(item.sdpMLineIndex) ?? 0,
                     sdpMid: item.sdpMid
                 )
-                connection.add(candidate)
+                try await connection.add(candidate)
             }
         } catch {
             state = .failed(error.localizedDescription)
