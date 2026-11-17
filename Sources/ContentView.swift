@@ -1,31 +1,36 @@
 import SwiftUI
 
-private enum ConsoleSection: String, CaseIterable, Identifiable {
+private enum ConsoleTab: String, CaseIterable, Identifiable {
     case home = "Home"
-    case library = "My games"
-    case discover = "Game Pass"
+    case games = "My games"
+    case discover = "Discover"
     case settings = "Settings"
 
     var id: String { rawValue }
-
-    var symbol: String {
+    var icon: String {
         switch self {
         case .home: return "house.fill"
-        case .library: return "square.grid.2x2.fill"
-        case .discover: return "gamecontroller.fill"
+        case .games: return "square.grid.2x2.fill"
+        case .discover: return "sparkles"
         case .settings: return "gearshape.fill"
         }
     }
 }
 
+private enum ConsolePalette {
+    static let background = Color(red: 0.035, green: 0.043, blue: 0.055)
+    static let surface = Color(red: 0.085, green: 0.098, blue: 0.112)
+    static let elevated = Color(red: 0.12, green: 0.135, blue: 0.15)
+    static let green = Color(red: 0.20, green: 0.78, blue: 0.35)
+    static let muted = Color.white.opacity(0.56)
+}
+
 struct ContentView: View {
     @EnvironmentObject private var controllerManager: ControllerManager
-    @State private var section: ConsoleSection = .home
-    @State private var showStreamStatus = false
-
-    private let background = Color(red: 0.035, green: 0.043, blue: 0.055)
-    private let panel = Color(red: 0.075, green: 0.09, blue: 0.105)
-    private let xboxGreen = Color(red: 0.20, green: 0.78, blue: 0.35)
+    @State private var selectedTab: ConsoleTab = .home
+    @State private var showPlayerStatus = false
+    @AppStorage("xcloudpro.haptics") private var hapticsEnabled = true
+    @AppStorage("xcloudpro.showNetworkStats") private var showNetworkStats = true
 
     private var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0.0"
@@ -34,362 +39,277 @@ struct ContentView: View {
     }
 
     var body: some View {
-        ZStack {
-            background.ignoresSafeArea()
-            consoleLayout
-        }
-        .preferredColorScheme(.dark)
-        .alert("Native streaming is being integrated", isPresented: $showStreamStatus) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text("The Xbox-style dashboard is ready as the app shell. Xbox account authentication, cloud catalog, and the native WebRTC player still need to be connected before games can launch.")
-        }
-    }
-
-    private var consoleLayout: some View {
         GeometryReader { geometry in
             HStack(spacing: 0) {
-                sidebar
-                    .frame(width: geometry.size.width < 700 ? 68 : 205)
-
-                Rectangle()
-                    .fill(.white.opacity(0.07))
-                    .frame(width: 1)
-
+                sidebar(compact: geometry.size.width < 700)
+                Rectangle().fill(.white.opacity(0.07)).frame(width: 1)
                 VStack(spacing: 0) {
                     topBar
                     ScrollView(showsIndicators: false) {
                         Group {
-                            switch section {
+                            switch selectedTab {
                             case .home: homePage
-                            case .library: libraryPage
-                            case .discover: gamePassPage
+                            case .games: gamesPage
+                            case .discover: discoverPage
                             case .settings: settingsPage
                             }
                         }
-                        .frame(maxWidth: 1160, alignment: .leading)
+                        .frame(maxWidth: 1120, alignment: .leading)
                         .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.horizontal, geometry.size.width < 700 ? 16 : 30)
-                        .padding(.top, 22)
-                        .padding(.bottom, 36)
+                        .padding(.horizontal, geometry.size.width < 700 ? 18 : 34)
+                        .padding(.top, 24)
+                        .padding(.bottom, 42)
                     }
                 }
             }
+            .background(ConsolePalette.background)
+        }
+        .background(ConsolePalette.background.ignoresSafeArea())
+        .preferredColorScheme(.dark)
+        .alert("Native streaming is not connected yet", isPresented: $showPlayerStatus) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("The Xbox-style dashboard is in place. The native Xbox Cloud authentication and streaming transport still need to be integrated and tested before games can launch.")
         }
     }
 
-    private var sidebar: some View {
+    private func sidebar(compact: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 9) {
+            HStack(spacing: 10) {
                 Image(systemName: "xbox.logo")
-                    .font(.system(size: 27, weight: .bold))
-                    .foregroundStyle(xboxGreen)
-                if wideSidebar {
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundStyle(ConsolePalette.green)
+                if !compact {
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("XCLOUD")
-                            .font(.system(size: 16, weight: .black, design: .rounded))
-                            .tracking(1.1)
-                        Text("GAMING")
-                            .font(.system(size: 9, weight: .bold))
-                            .tracking(2)
-                            .foregroundStyle(.white.opacity(0.43))
+                        Text("XCLOUD").font(.system(size: 17, weight: .black, design: .rounded)).tracking(1.4)
+                        Text("PRO CONSOLE").font(.system(size: 9, weight: .bold)).tracking(2).foregroundStyle(ConsolePalette.muted)
                     }
                 }
             }
-            .padding(.horizontal, wideSidebar ? 18 : 0)
-            .frame(maxWidth: .infinity, alignment: wideSidebar ? .leading : .center)
-            .padding(.top, 25)
-            .padding(.bottom, 35)
+            .frame(maxWidth: .infinity, alignment: compact ? .center : .leading)
+            .padding(.horizontal, compact ? 0 : 22)
+            .padding(.top, 28)
+            .padding(.bottom, 38)
 
-            ForEach(ConsoleSection.allCases) { item in
-                Button {
-                    section = item
-                } label: {
-                    HStack(spacing: 13) {
-                        Image(systemName: item.symbol)
-                            .font(.system(size: 17, weight: .semibold))
-                            .frame(width: 22)
-                        if wideSidebar {
-                            Text(item.rawValue)
-                                .font(.system(size: 13, weight: .semibold))
+            ForEach(ConsoleTab.allCases) { tab in
+                Button { selectedTab = tab } label: {
+                    HStack(spacing: 14) {
+                        Image(systemName: tab.icon).font(.system(size: 17, weight: .semibold)).frame(width: 22)
+                        if !compact {
+                            Text(tab.rawValue).font(.system(size: 14, weight: .semibold))
                             Spacer(minLength: 0)
                         }
                     }
-                    .foregroundStyle(section == item ? .white : .white.opacity(0.57))
-                    .padding(.horizontal, wideSidebar ? 13 : 0)
+                    .foregroundStyle(selectedTab == tab ? .white : ConsolePalette.muted)
+                    .padding(.horizontal, compact ? 0 : 15)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 46)
+                    .frame(height: 48)
                     .background {
-                        if section == item {
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(xboxGreen.opacity(0.19))
+                        if selectedTab == tab {
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(ConsolePalette.green.opacity(0.18))
                                 .overlay(alignment: .leading) {
-                                    Capsule().fill(xboxGreen).frame(width: 3).padding(.vertical, 8)
+                                    Capsule().fill(ConsolePalette.green).frame(width: 3).padding(.vertical, 9)
                                 }
                         }
                     }
-                    .contentShape(RoundedRectangle(cornerRadius: 10))
+                    .contentShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .buttonStyle(.plain)
-                .padding(.horizontal, 10)
-                .padding(.bottom, 6)
+                .padding(.horizontal, 11)
+                .padding(.bottom, 7)
             }
 
-            Spacer(minLength: 12)
-
-            if wideSidebar {
-                HStack(spacing: 9) {
-                    Image(systemName: "gamecontroller.fill")
-                        .foregroundStyle(xboxGreen)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("CONTROLLER")
-                            .font(.system(size: 8, weight: .bold))
-                            .tracking(1)
-                            .foregroundStyle(.white.opacity(0.4))
-                        Text(controllerManager.statusText)
-                            .font(.system(size: 10, weight: .medium))
-                            .lineLimit(1)
-                    }
+            Spacer(minLength: 20)
+            if !compact {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("CONTROLLER", systemImage: "gamecontroller.fill")
+                        .font(.system(size: 9, weight: .black)).tracking(1.3)
+                        .foregroundStyle(ConsolePalette.green)
+                    Text(controllerManager.statusText)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(ConsolePalette.muted)
+                        .lineLimit(2)
                 }
-                .padding(10)
+                .padding(13)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 10))
-                .padding(.horizontal, 10)
-                .padding(.bottom, 18)
+                .background(ConsolePalette.surface, in: RoundedRectangle(cornerRadius: 12))
+                .padding(.horizontal, 12)
+                .padding(.bottom, 20)
             }
         }
+        .frame(width: compact ? 68 : 218)
+        .background(ConsolePalette.background)
     }
 
-    private var wideSidebar: Bool { true }
-
     private var topBar: some View {
-        HStack(spacing: 14) {
-            Text(section.rawValue.uppercased())
-                .font(.system(size: 11, weight: .black))
-                .tracking(1.8)
-                .foregroundStyle(.white.opacity(0.52))
+        HStack {
+            Text(selectedTab.rawValue.uppercased())
+                .font(.system(size: 11, weight: .black)).tracking(2)
+                .foregroundStyle(ConsolePalette.muted)
             Spacer()
-            HStack(spacing: 7) {
-                Circle().fill(xboxGreen).frame(width: 6, height: 6)
-                Text("XCloudPro")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.72))
+            HStack(spacing: 8) {
+                Circle().fill(ConsolePalette.green).frame(width: 7, height: 7)
+                Text("XCloudPro").font(.system(size: 10, weight: .bold)).tracking(0.8)
             }
-            .padding(.horizontal, 11)
-            .padding(.vertical, 7)
+            .padding(.horizontal, 12).padding(.vertical, 8)
             .background(.white.opacity(0.06), in: Capsule())
             Image(systemName: "person.crop.circle.fill")
-                .font(.system(size: 26))
-                .foregroundStyle(.white.opacity(0.72))
+                .font(.system(size: 27)).foregroundStyle(.white.opacity(0.72)).padding(.leading, 8)
         }
-        .padding(.horizontal, 24)
-        .frame(height: 64)
-        .background(background.opacity(0.97))
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(.white.opacity(0.07)).frame(height: 1)
-        }
+        .padding(.horizontal, 26)
+        .frame(height: 66)
+        .background(ConsolePalette.background)
+        .overlay(alignment: .bottom) { Rectangle().fill(.white.opacity(0.07)).frame(height: 1) }
     }
 
     private var homePage: some View {
         VStack(alignment: .leading, spacing: 27) {
-            heroTile
-
-            HStack {
-                sectionHeading("RECENTLY PLAYED", subtitle: "Your games will appear here")
+            hero
+            HStack(alignment: .bottom) {
+                heading("JUMP BACK IN", subtitle: "Your gaming space")
                 Spacer()
-                Button("MY GAMES") { section = .library }
-                    .font(.system(size: 10, weight: .bold))
-                    .tracking(1)
-                    .foregroundStyle(xboxGreen)
+                Text("YOUR CONSOLE").font(.system(size: 9, weight: .black)).tracking(1.4).foregroundStyle(ConsolePalette.green)
             }
-
-            HStack(spacing: 13) {
-                emptyGameTile(title: "No recent games", subtitle: "Sign in and connect your library", symbol: "gamecontroller")
-                emptyGameTile(title: "Your collection", subtitle: "Cloud games will show here", symbol: "square.grid.2x2")
-                emptyGameTile(title: "Controller", subtitle: controllerManager.statusText, symbol: "gamecontroller.fill")
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
+                actionTile("My games", detail: "Your cloud game library", icon: "square.grid.2x2.fill", tint: ConsolePalette.green) { selectedTab = .games }
+                actionTile("Discover", detail: "Explore available games", icon: "sparkles", tint: .cyan) { selectedTab = .discover }
+                actionTile("Controller", detail: controllerManager.statusText, icon: "gamecontroller.fill", tint: .orange) { selectedTab = .settings }
+                actionTile("Settings", detail: "Console preferences", icon: "slider.horizontal.3", tint: .purple) { selectedTab = .settings }
             }
-
-            HStack(spacing: 12) {
-                quickAction(title: "Browse Game Pass", symbol: "rectangle.stack.fill") { section = .discover }
-                quickAction(title: "Console settings", symbol: "gearshape.fill") { section = .settings }
-            }
+            statusPanel
         }
     }
 
-    private var heroTile: some View {
+    private var hero: some View {
         ZStack(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 22)
-                .fill(
-                    LinearGradient(
-                        colors: [Color(red: 0.12, green: 0.38, blue: 0.22), Color(red: 0.055, green: 0.15, blue: 0.10), panel],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-            Circle()
-                .fill(xboxGreen.opacity(0.15))
-                .frame(width: 260, height: 260)
-                .blur(radius: 3)
-                .offset(x: 440, y: 55)
-            Image(systemName: "gamecontroller.fill")
-                .font(.system(size: 145, weight: .ultraLight))
-                .foregroundStyle(.white.opacity(0.075))
-                .rotationEffect(.degrees(-20))
-                .offset(x: 500, y: 28)
-
+            RoundedRectangle(cornerRadius: 24)
+                .fill(LinearGradient(colors: [Color(red: 0.10, green: 0.34, blue: 0.20), Color(red: 0.055, green: 0.13, blue: 0.095), ConsolePalette.surface], startPoint: .topLeading, endPoint: .bottomTrailing))
+            GeometryReader { proxy in
+                Image(systemName: "gamecontroller.fill")
+                    .font(.system(size: min(190, proxy.size.width * 0.30), weight: .ultraLight))
+                    .foregroundStyle(.white.opacity(0.075))
+                    .rotationEffect(.degrees(-18))
+                    .position(x: proxy.size.width * 0.83, y: proxy.size.height * 0.55)
+            }
             VStack(alignment: .leading, spacing: 14) {
-                Text("XBOX CLOUD GAMING")
-                    .font(.system(size: 10, weight: .black))
-                    .tracking(2.3)
-                    .foregroundStyle(xboxGreen)
-                Text("Play your way.")
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
-                    .minimumScaleFactor(0.75)
-                    .lineLimit(1)
-                Text("Your Xbox gaming space, built around a console-style experience.")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.68))
-                    .frame(maxWidth: 410, alignment: .leading)
-                Button {
-                    showStreamStatus = true
-                } label: {
-                    Label("PLAY", systemImage: "play.fill")
-                        .font(.system(size: 12, weight: .black))
-                        .tracking(1.2)
-                        .foregroundStyle(.black)
-                        .padding(.horizontal, 25)
-                        .frame(height: 44)
-                        .background(xboxGreen, in: Capsule())
+                Text("WELCOME TO XCLOUDPRO")
+                    .font(.system(size: 10, weight: .black)).tracking(2.2).foregroundStyle(ConsolePalette.green)
+                Text("Your games.\nYour console.")
+                    .font(.system(size: 38, weight: .bold, design: .rounded))
+                    .minimumScaleFactor(0.7).lineLimit(2)
+                Text("A native Xbox-inspired home for cloud gaming.")
+                    .font(.system(size: 13, weight: .medium)).foregroundStyle(.white.opacity(0.68))
+                Button { showPlayerStatus = true } label: {
+                    Label("START PLAYING", systemImage: "play.fill")
+                        .font(.system(size: 11, weight: .black)).tracking(1)
+                        .foregroundStyle(.black).padding(.horizontal, 21).frame(height: 45)
+                        .background(ConsolePalette.green, in: Capsule())
                 }
                 .buttonStyle(.plain)
                 .padding(.top, 3)
             }
-            .padding(.horizontal, 27)
-            .padding(.vertical, 28)
+            .padding(28)
         }
-        .frame(minHeight: 265)
-        .clipShape(RoundedRectangle(cornerRadius: 22))
+        .frame(minHeight: 285)
+        .clipShape(RoundedRectangle(cornerRadius: 24))
     }
 
-    private var libraryPage: some View {
+    private var gamesPage: some View {
         VStack(alignment: .leading, spacing: 20) {
-            sectionHeading("MY GAMES", subtitle: "Your Xbox cloud-playable collection")
-            emptyState(
-                title: "Your library is waiting",
-                detail: "The native Xbox sign-in and cloud catalog connection are part of the streaming-engine migration.",
-                symbol: "square.grid.2x2.fill"
-            )
+            heading("MY GAMES", subtitle: "Your Xbox cloud library will appear here when account and catalog services are connected.")
+            statusPanel
+            Button { showPlayerStatus = true } label: {
+                Label("Streaming service not connected", systemImage: "info.circle")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(ConsolePalette.muted)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(18).background(ConsolePalette.surface, in: RoundedRectangle(cornerRadius: 14))
+            }.buttonStyle(.plain)
         }
     }
 
-    private var gamePassPage: some View {
+    private var discoverPage: some View {
         VStack(alignment: .leading, spacing: 20) {
-            sectionHeading("GAME PASS", subtitle: "Discover games available to play in the cloud")
-            emptyState(
-                title: "Discover your next game",
-                detail: "Game artwork, titles, and availability will load here after the Xbox catalog API is connected.",
-                symbol: "rectangle.stack.fill"
-            )
+            heading("DISCOVER", subtitle: "Catalog browsing will be enabled after the Xbox service API integration.")
+            statusPanel
         }
     }
 
     private var settingsPage: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            sectionHeading("CONSOLE SETTINGS", subtitle: "XCloudPro app and streaming preferences")
-            settingsRow("App version", value: appVersion, symbol: "number")
-            settingsRow("Streaming engine", value: "Native WebRTC · integration pending", symbol: "dot.radiowaves.left.and.right")
-            settingsRow("Controller", value: controllerManager.statusText, symbol: "gamecontroller")
-            settingsRow("Target device", value: "iPad · iPadOS 18.1+", symbol: "ipad")
-            VStack(alignment: .leading, spacing: 8) {
-                Text("STREAMING OPTIONS")
-                    .font(.system(size: 10, weight: .black))
-                    .tracking(1.4)
-                    .foregroundStyle(xboxGreen)
-                Text("Resolution, frame rate, and bitrate controls will be enabled only when the native streaming session reports that the option is supported.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.white.opacity(0.58))
-                    .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 18) {
+            heading("SETTINGS", subtitle: "Native XCloudPro preferences")
+            settingsToggle("Haptic feedback", detail: "Use haptics for supported interface actions", value: $hapticsEnabled, icon: "iphone.radiowaves.left.and.right")
+            settingsToggle("Show network statistics", detail: "Display diagnostics in the player when available", value: $showNetworkStats, icon: "chart.xyaxis.line")
+            settingsInfo("App version", value: appVersion, icon: "number")
+            settingsInfo("Controller", value: controllerManager.statusText, icon: "gamecontroller")
+            settingsInfo("Streaming engine", value: "Native integration in development", icon: "waveform.path")
+            settingsInfo("Gameplay renderer", value: "No web player bundled", icon: "display")
+            Text("Resolution, bitrate, codec, and frame-rate controls will be shown only when the native streaming backend exposes and supports them.")
+                .font(.system(size: 11)).foregroundStyle(ConsolePalette.muted)
+                .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                .background(ConsolePalette.surface, in: RoundedRectangle(cornerRadius: 14))
+        }
+    }
+
+    private var statusPanel: some View {
+        HStack(spacing: 13) {
+            Image(systemName: "antenna.radiowaves.left.and.right")
+                .font(.system(size: 22)).foregroundStyle(ConsolePalette.green)
+                .frame(width: 42, height: 42).background(ConsolePalette.green.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+            VStack(alignment: .leading, spacing: 4) {
+                Text("NATIVE STREAMING ENGINE")
+                    .font(.system(size: 10, weight: .black)).tracking(1.1)
+                Text("Integration in progress — no gameplay stream is active.")
+                    .font(.system(size: 11)).foregroundStyle(ConsolePalette.muted)
             }
-            .padding(17)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(panel, in: RoundedRectangle(cornerRadius: 15))
+            Spacer(minLength: 0)
+            Circle().fill(.orange).frame(width: 8, height: 8)
+        }
+        .padding(16).background(ConsolePalette.surface, in: RoundedRectangle(cornerRadius: 16))
+    }
+
+    private func heading(_ title: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.system(size: 18, weight: .black, design: .rounded)).tracking(1)
+            Text(subtitle).font(.system(size: 11, weight: .medium)).foregroundStyle(ConsolePalette.muted)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private func sectionHeading(_ title: String, subtitle: String) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(title)
-                .font(.system(size: 17, weight: .black, design: .rounded))
-                .tracking(1)
-            Text(subtitle)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.white.opacity(0.48))
-        }
-    }
-
-    private func emptyGameTile(title: String, subtitle: String, symbol: String) -> some View {
-        VStack(alignment: .leading, spacing: 11) {
-            Image(systemName: symbol)
-                .font(.system(size: 23, weight: .semibold))
-                .foregroundStyle(xboxGreen)
-            Text(title)
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(.white)
-            Text(subtitle)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.white.opacity(0.46))
-                .lineLimit(2)
-        }
-        .frame(maxWidth: .infinity, minHeight: 112, alignment: .leading)
-        .padding(14)
-        .background(panel, in: RoundedRectangle(cornerRadius: 14))
-    }
-
-    private func quickAction(title: String, symbol: String, action: @escaping () -> Void) -> some View {
+    private func actionTile(_ title: String, detail: String, icon: String, tint: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Label(title, systemImage: symbol)
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(.white.opacity(0.86))
-                .frame(maxWidth: .infinity, minHeight: 48)
-                .background(panel, in: RoundedRectangle(cornerRadius: 12))
+            VStack(alignment: .leading, spacing: 11) {
+                Image(systemName: icon).font(.system(size: 22, weight: .semibold)).foregroundStyle(tint)
+                Text(title).font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                Text(detail).font(.system(size: 10, weight: .medium)).foregroundStyle(ConsolePalette.muted).lineLimit(2)
+            }
+            .frame(maxWidth: .infinity, minHeight: 105, alignment: .leading)
+            .padding(16).background(ConsolePalette.surface, in: RoundedRectangle(cornerRadius: 16))
         }
         .buttonStyle(.plain)
     }
 
-    private func emptyState(title: String, detail: String, symbol: String) -> some View {
-        VStack(spacing: 13) {
-            Image(systemName: symbol)
-                .font(.system(size: 36))
-                .foregroundStyle(xboxGreen)
-            Text(title)
-                .font(.system(size: 17, weight: .bold))
-            Text(detail)
-                .font(.system(size: 12))
-                .foregroundStyle(.white.opacity(0.52))
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 420)
+    private func settingsToggle(_ title: String, detail: String, value: Binding<Bool>, icon: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon).foregroundStyle(ConsolePalette.green).frame(width: 28)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.system(size: 13, weight: .semibold))
+                Text(detail).font(.system(size: 10)).foregroundStyle(ConsolePalette.muted)
+            }
+            Spacer()
+            Toggle(title, isOn: value).labelsHidden().tint(ConsolePalette.green)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 55)
-        .padding(.horizontal, 20)
-        .background(panel, in: RoundedRectangle(cornerRadius: 18))
+        .padding(16).background(ConsolePalette.surface, in: RoundedRectangle(cornerRadius: 14))
     }
 
-    private func settingsRow(_ title: String, value: String, symbol: String) -> some View {
-        HStack(spacing: 13) {
-            Image(systemName: symbol)
-                .font(.system(size: 16))
-                .foregroundStyle(xboxGreen)
-                .frame(width: 28)
-            Text(title)
-                .font(.system(size: 12, weight: .semibold))
+    private func settingsInfo(_ title: String, value: String, icon: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon).foregroundStyle(ConsolePalette.green).frame(width: 28)
+            Text(title).font(.system(size: 12, weight: .semibold))
             Spacer()
-            Text(value)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.white.opacity(0.53))
-                .multilineTextAlignment(.trailing)
+            Text(value).font(.system(size: 10)).foregroundStyle(ConsolePalette.muted).multilineTextAlignment(.trailing)
         }
-        .padding(16)
-        .background(panel, in: RoundedRectangle(cornerRadius: 13))
+        .padding(16).background(ConsolePalette.surface, in: RoundedRectangle(cornerRadius: 14))
     }
 }
