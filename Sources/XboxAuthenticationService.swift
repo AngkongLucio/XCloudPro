@@ -262,13 +262,9 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
             key = try XBLProofKey(rawRepresentation: data)
             proofKey = key
         }
-        let deviceToken: String
-        if let saved = try SecureTokenStore.load(account: "xbl.device-token") {
-            deviceToken = saved
-        } else {
-            deviceToken = try await requestDeviceToken(using: key)
-            try SecureTokenStore.save(deviceToken, account: "xbl.device-token")
-        }
+        // Device tokens are renewed with the user token before Sisu authorization.
+        let deviceToken = try await requestDeviceToken(using: key)
+        try SecureTokenStore.save(deviceToken, account: "xbl.device-token")
 
         let userToken = try await refreshUserToken(refreshToken)
         try SecureTokenStore.save(userToken.accessToken, account: "xbl.user-access-token")
