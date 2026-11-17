@@ -57,13 +57,15 @@ final class XboxCloudCatalogService {
     }
 
     private func mapGames(_ titles: [XboxCloudTitle]) async -> [CloudGame] {
-        let ids = titles.map(\.titleId)
-        let metadata = (try? await fetchProductMetadata(titleIDs: ids)) ?? [:]
+        // The catalog product endpoint expects product IDs, not Xbox title IDs.
+        let productIDs = titles.compactMap { $0.details?.productId }
+        let metadata = (try? await fetchProductMetadata(titleIDs: productIDs)) ?? [:]
 
         return titles.map { item in
-            CloudGame(
+            let productID = item.details?.productId ?? item.titleId
+            return CloudGame(
                 id: item.titleId,
-                title: metadata[item.titleId]?.productTitle
+                title: metadata[productID]?.productTitle
                     ?? item.titleId.replacingOccurrences(of: "_", with: " "),
                 artworkURL: nil,
                 supportsCloudPlay: item.details?.hasEntitlement ?? false
@@ -97,8 +99,8 @@ final class XboxCloudCatalogService {
             request.setValue("21.0.0", forHTTPHeaderField: "calling-app-version")
             request.httpBody = try JSONSerialization.data(withJSONObject: ["Products": batch])
 
-            let batchResult: [String: XboxProductMetadata] = try await send(request)
-            result.merge(batchResult) { _, new in new }
+            let batchResult: XboxProductMetadataResponse = try await send(request)
+            result.merge(batchResult.products) { _, new in new }
         }
         return result
     }
@@ -158,11 +160,20 @@ private struct XboxCloudTitle: Decodable {
     let details: Details?
 
     struct Details: Decodable {
+        let productId: String?
         let hasEntitlement: Bool?
         let supportedInputTypes: [String]?
         let programs: [String]?
         let userPrograms: [String]?
         let userSubscriptions: [String]?
+    }
+}
+
+private struct XboxProductMetadataResponse: Decodable {
+    let products: [String: XboxProductMetadata]
+
+    enum CodingKeys: String, CodingKey {
+        case products = "Products"
     }
 }
 
