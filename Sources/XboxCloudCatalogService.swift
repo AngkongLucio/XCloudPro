@@ -26,7 +26,7 @@ final class XboxCloudCatalogService {
     init(
         regionBaseURL: URL,
         gsToken: String,
-        market: String = "PH",
+        market: String = "US",
         language: String = "en-US",
         urlSession: URLSession = .shared
     ) throws {
