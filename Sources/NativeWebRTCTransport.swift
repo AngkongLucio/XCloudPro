@@ -28,6 +28,8 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
     private var inputDataChannel: RTCDataChannel?
     private var controlDataChannel: RTCDataChannel?
     private var inputSequence: UInt32 = 0
+    private var latestGamepadState = XboxGamepadState.neutral
+    private var inputTask: Task<Void, Never>?
     private var localCandidates: [RTCIceCandidate] = []
     private var iceGatheringContinuation: CheckedContinuation<[RTCIceCandidate], Error>?
     private var renderers: [RTCVideoRenderer] = []
@@ -123,6 +125,8 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
     private func closePeerConnection() {
         iceGatheringContinuation?.resume(throwing: CancellationError())
         iceGatheringContinuation = nil
+        inputTask?.cancel()
+        inputTask = nil
         inputDataChannel?.delegate = nil
         controlDataChannel?.delegate = nil
         inputDataChannel = nil
@@ -140,7 +144,7 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
         case "input":
             inputDataChannel = channel
             sendClientMetadata()
-            sendGamepadState(.neutral)
+            startInputLoop()
         case "controlv1", "control":
             controlDataChannel = channel
             sendControlMessage([
@@ -189,6 +193,27 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
     }
 
     private func sendGamepadState(_ state: XboxGamepadState) {
+        latestGamepadState = state
+    }
+
+    /// Xbox input is sent at 125 Hz. Controller callbacks only update the latest
+    /// snapshot; this loop coalesces changes instead of queueing stale button events.
+    private func startInputLoop() {
+        inputTask?.cancel()
+        inputTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                self.sendGamepadPacket(self.latestGamepadState)
+                do {
+                    try await Task.sleep(nanoseconds: 8_000_000)
+                } catch {
+                    break
+                }
+            }
+        }
+    }
+
+    private func sendGamepadPacket(_ state: XboxGamepadState) {
         guard let channel = inputDataChannel, channel.readyState == .open else { return }
         var packet = Data()
         packet.appendLittleEndian(UInt16(2)) // Gamepad report
@@ -203,8 +228,8 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
         packet.appendLittleEndian(state.rightY)
         packet.appendLittleEndian(state.leftTrigger)
         packet.appendLittleEndian(state.rightTrigger)
-        packet.appendLittleEndian(UInt32(1)) // Physical controller
-        packet.appendLittleEndian(UInt32(1)) // Virtual controller
+        packet.appendLittleEndian(UInt32(1)) // Physical controller (little-endian)
+        packet.appendBigEndian(UInt32(1)) // Virtual controller (big-endian)
         inputSequence &+= 1
         _ = channel.sendData(RTCDataBuffer(data: packet, isBinary: true))
     }
@@ -383,5 +408,10 @@ private extension Data {
     mutating func appendLittleEndian<T: FixedWidthInteger>(_ value: T) {
         var littleEndian = value.littleEndian
         Swift.withUnsafeBytes(of: &littleEndian) { append(contentsOf: $0) }
+    }
+
+    mutating func appendBigEndian<T: FixedWidthInteger>(_ value: T) {
+        var bigEndian = value.bigEndian
+        Swift.withUnsafeBytes(of: &bigEndian) { append(contentsOf: $0) }
     }
 }
