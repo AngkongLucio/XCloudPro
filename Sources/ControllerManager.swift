@@ -95,9 +95,9 @@ final class ControllerManager: ObservableObject {
                 leftTrigger: Self.normalizedTrigger(gamepad.leftTrigger.value),
                 rightTrigger: Self.normalizedTrigger(gamepad.rightTrigger.value),
                 leftX: Self.normalizedAxis(gamepad.leftThumbstick.xAxis.value),
-                leftY: Self.normalizedAxis(-gamepad.leftThumbstick.yAxis.value),
+                leftY: Self.normalizedAxis(gamepad.leftThumbstick.yAxis.value),
                 rightX: Self.normalizedAxis(gamepad.rightThumbstick.xAxis.value),
-                rightY: Self.normalizedAxis(-gamepad.rightThumbstick.yAxis.value)
+                rightY: Self.normalizedAxis(gamepad.rightThumbstick.yAxis.value)
             )
         )
     }
