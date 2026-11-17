@@ -9,9 +9,18 @@ final class NativeStreamCoordinator: ObservableObject {
 
     let transport: NativeWebRTCTransport
     private var service: XboxCloudSessionService?
+    private var transportObservation: AnyCancellable?
 
     init(transport: NativeWebRTCTransport = NativeWebRTCTransport()) {
         self.transport = transport
+        self.transportObservation = transport.$state.sink { [weak self] state in
+            Task { @MainActor in
+                self?.isStreaming = state == .connected
+                if case .failed(let message) = state {
+                    self?.lastError = message
+                }
+            }
+        }
     }
 
     /// Starts a true Xbox Cloud Gaming session. The caller must provide tokens
@@ -43,24 +52,10 @@ final class NativeStreamCoordinator: ObservableObject {
             )
 
             try await transport.start(using: cloudService)
-            isStreaming = true
             isStarting = false
-
-            let pulse = max(30, configuration.keepAlivePulseInSeconds ?? 300)
-            keepAliveTask = Task { [weak self, weak cloudService] in
-                while !Task.isCancelled {
-                    do {
-                        try await Task.sleep(nanoseconds: UInt64(pulse) * 1_000_000_000)
-                        guard !Task.isCancelled else { break }
-                        try await cloudService?.sendKeepAlive()
-                    } catch {
-                        await MainActor.run {
-                            self?.lastError = "Cloud keepalive failed: \(error.localizedDescription)"
-                        }
-                        break
-                    }
-                }
-            }
+            cloudService.startKeepAlive(
+                pulseIntervalSeconds: max(30, configuration.keepAlivePulseInSeconds ?? 300)
+            )
         } catch {
             lastError = error.localizedDescription
             isStarting = false
