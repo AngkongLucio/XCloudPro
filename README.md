@@ -17,17 +17,19 @@ Implemented in this branch:
 - Kept Bluetooth controller detection through Apple's GameController framework.
 - Added a typed native streaming-client contract and explicit connection states.
 - Added native PKCE, P-256 proof-signing, and Keychain token-storage primitives.
-- Added an Xbox Cloud-only session REST client for provisioning, connect handoff, configuration, keepalive, and stop.
+- Added an Xbox Cloud-only session REST client for provisioning, MSAL-token handoff, configuration, keepalive, and stop.
+- Added a native WebRTC receive-only peer transport with SDP/ICE signaling and a SwiftUI video surface.
+- Added a stream coordinator and Xbox-style native player quick menu; live auth/catalog wiring and controller input mapping are still pending.
 
 Not yet implemented or verified:
 - Microsoft/Xbox authentication and token lifecycle.
 - Xbox cloud catalog and entitlement APIs.
 - End-to-end authentication/token exchange and catalog integration.
-- Native WebRTC SDP/ICE transport, video/audio renderer, and controller event mapping.
+- Live Microsoft authentication/catalog integration, validated WebRTC video/audio on an Xbox Cloud session, and controller input mapping.
 - Functional stream quality controls backed by negotiated session capabilities.
 - Successful device build, installation, and gameplay test on iPad 9th generation.
 
-The dashboard intentionally reports that streaming is not connected. The cloud session REST client and authentication primitives are not wired into the UI and have not been tested against a live Xbox account. They do not constitute a working stream. The app does not simulate a working stream or display fake game catalog entries.
+The dashboard intentionally reports that streaming is not connected. The cloud session service, authentication primitives, WebRTC transport, coordinator, and player surface are not yet wired to a completed Microsoft sign-in/catalog flow and have not been tested against a live Xbox account. They do not constitute a verified working stream. The app does not simulate a working stream or display fake game catalog entries.
 
 ## Architecture rules
 - Separate Xbox Cloud Gaming from Xbox console Remote Play; do not claim one protocol supports the other.
