@@ -306,6 +306,24 @@ final class XboxCloudSessionService {
         return request
     }
 
+
+    /// The Xbox exchange endpoints may return an empty response while signaling
+    /// is pending. Decode only once exchangeResponse is actually present.
+    private func sendExchange(_ request: URLRequest) async throws -> String? {
+        let (data, response) = try await urlSession.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw CloudSessionServiceError.invalidResponse
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let message = String(data: data, encoding: .utf8) ?? "No error details"
+            throw CloudSessionServiceError.httpStatus(http.statusCode, message)
+        }
+        guard !data.isEmpty else { return nil }
+        let envelope = try JSONDecoder().decode(CloudExchangeEnvelope.self, from: data)
+        guard let exchange = envelope.exchangeResponse, !exchange.isEmpty else { return nil }
+        return exchange
+    }
+
     private func send<T: Decodable>(_ request: URLRequest) async throws -> T {
         let (data, response) = try await urlSession.data(for: request)
         guard let http = response as? HTTPURLResponse else {
