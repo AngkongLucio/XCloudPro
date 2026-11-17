@@ -6,7 +6,7 @@ on:
     branches: [main, native-xstreaming-migration]
 
 concurrency:
-  group: xcloudpro-ios-${{ github.ref }}
+  group: xcloudpro-ios-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: true
 
 permissions:
