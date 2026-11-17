@@ -33,6 +33,13 @@ struct ContentView: View {
     @State private var selectedTab: ConsoleTab = .home
     @State private var showPlayerStatus = false
     @State private var showAuthenticationError = false
+    @StateObject private var streamCoordinator = NativeStreamCoordinator()
+    @State private var cloudGames: [CloudGame] = []
+    @State private var isLoadingGames = false
+    @State private var isStartingGame = false
+    @State private var gamesError: String?
+    @State private var activeGame: CloudGame?
+    @State private var showStreamPlayer = false
     @AppStorage("xcloudpro.haptics") private var hapticsEnabled = true
     @AppStorage("xcloudpro.showNetworkStats") private var showNetworkStats = true
 
@@ -71,10 +78,21 @@ struct ContentView: View {
         }
         .background(ConsolePalette.background.ignoresSafeArea())
         .preferredColorScheme(.dark)
-        .alert("Native streaming is not connected yet", isPresented: $showPlayerStatus) {
+        .task(id: selectedTab) {
+            if selectedTab == .games, authenticationService.account != nil, cloudGames.isEmpty {
+                await loadCloudGames()
+            }
+        }
+        .fullScreenCover(isPresented: $showStreamPlayer) {
+            NativePlayerView(coordinator: streamCoordinator) {
+                showStreamPlayer = false
+                activeGame = nil
+            }
+        }
+        .alert("Native streaming", isPresented: $showPlayerStatus) {
             Button("OK", role: .cancel) { }
         } message: {
-            Text("Microsoft sign-in is being integrated. Gameplay will be enabled only after the native stream transport and controller input are validated.")
+            Text("Sign in to your Microsoft account, then open My Games to load the cloud catalog.")
         }
         .alert("Microsoft sign-in", isPresented: $showAuthenticationError) {
             Button("OK", role: .cancel) { }
@@ -215,7 +233,7 @@ struct ContentView: View {
                     .minimumScaleFactor(0.7).lineLimit(2)
                 Text("A native Xbox-inspired home for cloud gaming.")
                     .font(.system(size: 13, weight: .medium)).foregroundStyle(.white.opacity(0.68))
-                Button { showPlayerStatus = true } label: {
+                Button { selectedTab = .games } label: {
                     Label("START PLAYING", systemImage: "play.fill")
                         .font(.system(size: 11, weight: .black)).tracking(1)
                         .foregroundStyle(.black).padding(.horizontal, 21).frame(height: 45)
@@ -232,22 +250,109 @@ struct ContentView: View {
 
     private var gamesPage: some View {
         VStack(alignment: .leading, spacing: 20) {
-            heading("MY GAMES", subtitle: "Your Xbox cloud library will appear here when account and catalog services are connected.")
-            statusPanel
-            Button { showPlayerStatus = true } label: {
-                Label("Streaming service not connected", systemImage: "info.circle")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(ConsolePalette.muted)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(18).background(ConsolePalette.surface, in: RoundedRectangle(cornerRadius: 14))
-            }.buttonStyle(.plain)
+            heading("MY GAMES", subtitle: "Xbox Cloud Gaming titles available to this account")
+            if authenticationService.account == nil {
+                statusPanel
+                Button { selectedTab = .account } label: {
+                    Label("Connect Microsoft account", systemImage: "person.crop.circle.badge.plus")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.black)
+                        .frame(maxWidth: .infinity).padding(16)
+                        .background(ConsolePalette.green, in: RoundedRectangle(cornerRadius: 14))
+                }.buttonStyle(.plain)
+            } else {
+                HStack {
+                    if let region = authenticationService.availableRegions.first(where: { $0.name == authenticationService.selectedRegionName }) {
+                        Label(region.name, systemImage: "globe")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(ConsolePalette.muted)
+                    }
+                    Spacer()
+                    Button {
+                        Task { await loadCloudGames() }
+                    } label: {
+                        Label(isLoadingGames ? "LOADING…" : "REFRESH", systemImage: "arrow.clockwise")
+                            .font(.system(size: 10, weight: .black))
+                            .foregroundStyle(ConsolePalette.green)
+                    }
+                    .disabled(isLoadingGames || isStartingGame)
+                }
+                if isLoadingGames {
+                    ProgressView("Loading Xbox cloud catalog…")
+                        .tint(ConsolePalette.green)
+                        .frame(maxWidth: .infinity).padding(32)
+                } else if let gamesError {
+                    Text(gamesError)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.orange)
+                        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(ConsolePalette.surface, in: RoundedRectangle(cornerRadius: 14))
+                    Button("TRY AGAIN") { Task { await loadCloudGames() } }
+                        .font(.system(size: 10, weight: .black))
+                } else if cloudGames.isEmpty {
+                    Text("Tap refresh to load titles available through Xbox Cloud Gaming.")
+                        .font(.system(size: 11)).foregroundStyle(ConsolePalette.muted)
+                        .padding(20).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(ConsolePalette.surface, in: RoundedRectangle(cornerRadius: 14))
+                } else {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 190), spacing: 12)], spacing: 12) {
+                        ForEach(cloudGames) { game in
+                            Button {
+                                Task { await startCloudGame(game) }
+                            } label: {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(LinearGradient(colors: [ConsolePalette.elevated, ConsolePalette.surface], startPoint: .topLeading, endPoint: .bottomTrailing))
+                                        .overlay {
+                                            Image(systemName: "gamecontroller.fill")
+                                                .font(.system(size: 32)).foregroundStyle(ConsolePalette.green.opacity(0.8))
+                                        }
+                                        .frame(height: 100)
+                                    Text(game.title)
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundStyle(.white)
+                                        .lineLimit(2)
+                                    Text("PLAY IN CLOUD")
+                                        .font(.system(size: 9, weight: .black)).tracking(0.8)
+                                        .foregroundStyle(ConsolePalette.green)
+                                }
+                                .padding(12)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(ConsolePalette.surface, in: RoundedRectangle(cornerRadius: 16))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(isStartingGame)
+                        }
+                    }
+                }
+                if isStartingGame {
+                    ProgressView("Starting \(activeGame?.title ?? "game")…")
+                        .tint(ConsolePalette.green)
+                }
+            }
         }
     }
 
     private var discoverPage: some View {
         VStack(alignment: .leading, spacing: 20) {
-            heading("DISCOVER", subtitle: "Catalog browsing will be enabled after the Xbox service API integration.")
-            statusPanel
+            heading("DISCOVER", subtitle: "Browse the Xbox Cloud Gaming catalog available to your account")
+            if cloudGames.isEmpty {
+                statusPanel
+                Button("LOAD CATALOG") { selectedTab = .games }
+                    .font(.system(size: 10, weight: .black))
+            } else {
+                ForEach(cloudGames.prefix(12)) { game in
+                    Button { Task { await startCloudGame(game) } } label: {
+                        HStack {
+                            Image(systemName: "gamecontroller.fill").foregroundStyle(ConsolePalette.green)
+                            Text(game.title).font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
+                            Spacer()
+                            Image(systemName: "play.fill").foregroundStyle(ConsolePalette.green)
+                        }
+                        .padding(14).background(ConsolePalette.surface, in: RoundedRectangle(cornerRadius: 12))
+                    }.buttonStyle(.plain)
+                }
+            }
         }
     }
 
@@ -304,9 +409,20 @@ struct ContentView: View {
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(ConsolePalette.green)
                     if !authenticationService.availableRegions.isEmpty {
-                        Text("Available cloud regions: " + authenticationService.availableRegions.joined(separator: ", "))
-                            .font(.system(size: 10)).foregroundStyle(ConsolePalette.muted)
-                            .fixedSize(horizontal: false, vertical: true)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("CLOUD REGION")
+                                .font(.system(size: 9, weight: .black)).tracking(1.1)
+                                .foregroundStyle(ConsolePalette.muted)
+                            Picker("Cloud region", selection: $authenticationService.selectedRegionName) {
+                                ForEach(authenticationService.availableRegions) { region in
+                                    Text(region.name).tag(Optional(region.name))
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .tint(ConsolePalette.green)
+                            Text("Only regions returned by Xbox for this account are selectable.")
+                                .font(.system(size: 9)).foregroundStyle(ConsolePalette.muted)
+                        }
                     }
                     Button("SIGN OUT", role: .destructive) {
                         authenticationService.signOut()
@@ -325,7 +441,7 @@ struct ContentView: View {
             settingsInfo("Account provider", value: "Microsoft / Xbox", icon: "person.badge.key.fill")
             settingsInfo("Gamertag", value: authenticationService.account?.gamertag ?? "Not connected", icon: "person.text.rectangle")
             settingsInfo("Xbox user ID", value: authenticationService.account?.id ?? "Available after sign-in", icon: "number")
-            settingsInfo("Cloud token", value: authenticationService.account == nil ? "Not available" : "Retrieved; refresh flow pending", icon: "key.horizontal")
+            settingsInfo("Cloud token", value: authenticationService.account == nil ? "Not available" : "Refresh supported when needed", icon: "key.horizontal")
         }
     }
 
@@ -360,6 +476,94 @@ struct ContentView: View {
             Circle().fill(.orange).frame(width: 8, height: 8)
         }
         .padding(16).background(ConsolePalette.surface, in: RoundedRectangle(cornerRadius: 16))
+    }
+
+    private func loadCloudGames() async {
+        guard authenticationService.account != nil, !isLoadingGames else { return }
+        isLoadingGames = true
+        gamesError = nil
+        defer { isLoadingGames = false }
+        do {
+            let credentials = try await authenticationService.cloudSessionCredentials()
+            let catalog = try XboxCloudCatalogService(
+                regionBaseURL: credentials.region.baseURI,
+                gsToken: credentials.gsToken
+            )
+            cloudGames = try await catalog.fetchCloudGames()
+            if cloudGames.isEmpty {
+                gamesError = "Xbox returned no cloud titles for this account or region."
+            }
+        } catch {
+            gamesError = error.localizedDescription
+        }
+    }
+
+    private func startCloudGame(_ game: CloudGame) async {
+        guard !isStartingGame, authenticationService.account != nil else { return }
+        isStartingGame = true
+        activeGame = game
+        gamesError = nil
+        defer { isStartingGame = false }
+        do {
+            let credentials = try await authenticationService.cloudSessionCredentials()
+            showStreamPlayer = true
+            await streamCoordinator.start(
+                titleID: game.id,
+                regionBaseURL: credentials.region.baseURI,
+                gsToken: credentials.gsToken,
+                osName: "ios",
+                deviceInfoHeader: makeDeviceInfoHeader(),
+                msalUserTokenProvider: { try await authenticationService.cloudTransferToken() }
+            )
+            if let error = streamCoordinator.lastError {
+                gamesError = error
+            }
+        } catch {
+            gamesError = error.localizedDescription
+        }
+    }
+
+    private func makeDeviceInfoHeader() -> String {
+        let bounds = UIScreen.main.nativeBounds
+        let width = Int(max(bounds.width, bounds.height))
+        let height = Int(min(bounds.width, bounds.height))
+        let info: [String: Any] = [
+            "appInfo": [
+                "env": [
+                    "clientAppId": "com.angkonglucio.xcloudpro",
+                    "clientAppType": "native",
+                    "clientAppVersion": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0.0",
+                    "clientSdkVersion": "10.3.7",
+                    "httpEnvironment": "prod",
+                    "sdkInstallId": ""
+                ]
+            ],
+            "dev": [
+                "hw": [
+                    "make": "Apple",
+                    "model": UIDevice.current.model,
+                    "sdktype": "native"
+                ],
+                "os": [
+                    "name": "iOS",
+                    "ver": UIDevice.current.systemVersion,
+                    "platform": "mobile"
+                ],
+                "displayInfo": [
+                    "dimensions": [
+                        "widthInPixels": width,
+                        "heightInPixels": height
+                    ],
+                    "pixelDensity": [
+                        "dpiX": UIScreen.main.scale,
+                        "dpiY": UIScreen.main.scale
+                    ]
+                ]
+            ]
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: info, options: [.sortedKeys]),
+              let value = String(data: data, encoding: .utf8) else { return "{}" }
+        return value
     }
 
     private func heading(_ title: String, subtitle: String) -> some View {

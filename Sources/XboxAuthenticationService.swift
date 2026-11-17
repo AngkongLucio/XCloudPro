@@ -9,6 +9,13 @@ struct XboxAccountProfile: Equatable, Identifiable {
     let userHash: String
 }
 
+struct XboxCloudRegion: Codable, Equatable, Identifiable {
+    let name: String
+    let baseURI: URL
+    let isDefault: Bool
+    var id: String { name }
+}
+
 enum XboxAuthenticationError: LocalizedError {
     case invalidResponse
     case serverRejected(Int, String)
@@ -47,7 +54,15 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
     @Published private(set) var account: XboxAccountProfile?
     @Published private(set) var isAuthenticating = false
     @Published private(set) var statusMessage = "Not signed in"
-    @Published private(set) var availableRegions: [String] = []
+    @Published private(set) var availableRegions: [XboxCloudRegion] = []
+    @Published var selectedRegionName: String? {
+        didSet {
+            if let selectedRegionName {
+                UserDefaults.standard.set(selectedRegionName, forKey: "xbl.selected-region")
+            }
+        }
+    }
+    @Published private(set) var cloudTokenExpiry: Date?
     @Published var errorMessage: String?
 
     private let urlSession: URLSession
@@ -79,6 +94,7 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
 
             statusMessage = "Preparing Xbox device authorization…"
             let deviceToken = try await requestDeviceToken(using: key)
+            try SecureTokenStore.save(deviceToken, account: "xbl.device-token")
 
             let pkce = try PKCEChallenge.make()
             statusMessage = "Connecting to Microsoft…"
@@ -119,16 +135,20 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
                 gamertag: sisu.gamertag,
                 userHash: sisu.userHash
             )
-            account = profile
 
             statusMessage = "Preparing Xbox Cloud Gaming…"
             let streamingXSTS = try await requestXSTS(userToken: sisu.userToken, relyingParty: "http://gssv.xboxlive.com/", using: key)
             let streamInfo = try await requestCloudStreamingToken(xstsToken: streamingXSTS)
             try SecureTokenStore.save(streamInfo.gsToken, account: "xbl.cloud-stream-token")
+            cloudTokenExpiry = Date().addingTimeInterval(TimeInterval(streamInfo.durationInSeconds))
+            try SecureTokenStore.save(String(cloudTokenExpiry!.timeIntervalSince1970), account: "xbl.cloud-token-expiry")
             availableRegions = streamInfo.regions
+            try saveRegions(streamInfo.regions)
+            selectedRegionName = streamInfo.regions.first(where: { $0.isDefault })?.name ?? streamInfo.regions.first?.name
             try SecureTokenStore.save(profile.gamertag, account: "xbl.profile-gamertag")
             try SecureTokenStore.save(profile.id, account: "xbl.profile-xuid")
             try SecureTokenStore.save(profile.userHash, account: "xbl.profile-user-hash")
+            account = profile
             statusMessage = "Signed in — Xbox Cloud token ready"
         } catch {
             statusMessage = "Sign-in failed"
@@ -139,14 +159,17 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
 
     func signOut() {
         let keys = [
-            "xbl.proof-key", "xbl.user-access-token", "xbl.user-refresh-token",
+            "xbl.proof-key", "xbl.device-token", "xbl.user-access-token", "xbl.user-refresh-token",
             "xbl.sisu-user-token", "xbl.sisu-title-token", "xbl.sisu-authorization-token",
-            "xbl.cloud-stream-token", "xbl.profile-gamertag", "xbl.profile-xuid",
+            "xbl.cloud-stream-token", "xbl.cloud-token-expiry", "xbl.cloud-regions", "xbl.profile-gamertag", "xbl.profile-xuid",
             "xbl.profile-user-hash"
         ]
         for key in keys { try? SecureTokenStore.delete(account: key) }
         account = nil
         availableRegions = []
+        selectedRegionName = nil
+        UserDefaults.standard.removeObject(forKey: "xbl.selected-region")
+        cloudTokenExpiry = nil
         statusMessage = "Not signed in"
         errorMessage = nil
         proofKey = nil
@@ -166,7 +189,139 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
             let userHash = try? SecureTokenStore.load(account: "xbl.profile-user-hash")
         else { return }
         account = XboxAccountProfile(id: xuid, gamertag: gamertag, userHash: userHash)
+        if let raw = try? SecureTokenStore.load(account: "xbl.cloud-regions"),
+           let data = Data(base64Encoded: raw),
+           let regions = try? JSONDecoder().decode([XboxCloudRegion].self, from: data) {
+            availableRegions = regions
+        }
+        selectedRegionName = UserDefaults.standard.string(forKey: "xbl.selected-region")
+        if let rawExpiry = try? SecureTokenStore.load(account: "xbl.cloud-token-expiry"),
+           let timestamp = Double(rawExpiry) {
+            cloudTokenExpiry = Date(timeIntervalSince1970: timestamp)
+        }
         statusMessage = "Xbox account saved"
+    }
+
+    /// Returns a current cloud token and a server region supplied by Xbox.
+    /// Credentials are silently refreshed when the streaming token is near expiry.
+    func cloudSessionCredentials() async throws -> (gsToken: String, region: XboxCloudRegion) {
+        let token = try SecureTokenStore.load(account: "xbl.cloud-stream-token")
+        let isFresh = (cloudTokenExpiry ?? .distantPast).timeIntervalSinceNow > 120
+        if token == nil || !isFresh || availableRegions.isEmpty {
+            try await refreshCloudCredentials()
+        }
+        guard let gsToken = try SecureTokenStore.load(account: "xbl.cloud-stream-token"),
+              let region = availableRegions.first(where: { $0.name == selectedRegionName })
+                ?? availableRegions.first(where: { $0.isDefault })
+                ?? availableRegions.first else {
+            throw XboxAuthenticationError.missingValue("cloud streaming token or region")
+        }
+        return (gsToken, region)
+    }
+
+    /// Xbox Cloud's /connect endpoint expects the Passport console-transfer token,
+    /// not the ordinary Microsoft account access token.
+    func cloudTransferToken() async throws -> String {
+        guard let refreshToken = try SecureTokenStore.load(account: "xbl.user-refresh-token") else {
+            throw XboxAuthenticationError.missingValue("Microsoft refresh token")
+        }
+        let url = URL(string: "https://login.live.com/oauth20_token.srf")!
+        let body = formEncoded([
+            "client_id": Constants.appID,
+            "grant_type": "refresh_token",
+            "refresh_token": refreshToken,
+            "scope": "service::http://Passport.NET/purpose::PURPOSE_XBOX_CLOUD_CONSOLE_TRANSFER_TOKEN",
+            "code": "",
+            "code_verifier": "",
+            "redirect_uri": ""
+        ])
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.httpBody = Data(body.utf8)
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.setValue("no-store, must-revalidate, no-cache", forHTTPHeaderField: "Cache-Control")
+        let object = try jsonObject(await perform(request))
+        if let rotated = object["refresh_token"] as? String, !rotated.isEmpty {
+            try SecureTokenStore.save(rotated, account: "xbl.user-refresh-token")
+        }
+        return try string(object, "access_token")
+    }
+
+    private func refreshCloudCredentials() async throws {
+        guard let refreshToken = try SecureTokenStore.load(account: "xbl.user-refresh-token") else {
+            throw XboxAuthenticationError.missingValue("Microsoft refresh token; sign in again")
+        }
+        let key: XBLProofKey
+        if let proofKey {
+            key = proofKey
+        } else {
+            guard let raw = try SecureTokenStore.load(account: "xbl.proof-key"),
+                  let data = Data(base64Encoded: raw) else {
+                throw XboxAuthenticationError.missingValue("Xbox proof key; sign in again")
+            }
+            key = try XBLProofKey(rawRepresentation: data)
+            proofKey = key
+        }
+        let deviceToken: String
+        if let saved = try SecureTokenStore.load(account: "xbl.device-token") {
+            deviceToken = saved
+        } else {
+            deviceToken = try await requestDeviceToken(using: key)
+            try SecureTokenStore.save(deviceToken, account: "xbl.device-token")
+        }
+
+        let userToken = try await refreshUserToken(refreshToken)
+        try SecureTokenStore.save(userToken.accessToken, account: "xbl.user-access-token")
+        try SecureTokenStore.save(userToken.refreshToken, account: "xbl.user-refresh-token")
+        let sisu = try await requestSisuAuthorization(
+            userAccessToken: userToken.accessToken,
+            deviceToken: deviceToken,
+            using: key,
+            sessionID: nil
+        )
+        try SecureTokenStore.save(sisu.userToken, account: "xbl.sisu-user-token")
+        try SecureTokenStore.save(sisu.titleToken, account: "xbl.sisu-title-token")
+        try SecureTokenStore.save(sisu.authorizationToken, account: "xbl.sisu-authorization-token")
+        let xsts = try await requestXSTS(
+            userToken: sisu.userToken,
+            relyingParty: "http://gssv.xboxlive.com/",
+            using: key
+        )
+        let streamInfo = try await requestCloudStreamingToken(xstsToken: xsts)
+        try SecureTokenStore.save(streamInfo.gsToken, account: "xbl.cloud-stream-token")
+        cloudTokenExpiry = Date().addingTimeInterval(TimeInterval(streamInfo.durationInSeconds))
+        try SecureTokenStore.save(String(cloudTokenExpiry!.timeIntervalSince1970), account: "xbl.cloud-token-expiry")
+        availableRegions = streamInfo.regions
+        try saveRegions(streamInfo.regions)
+        if !streamInfo.regions.contains(where: { $0.name == selectedRegionName }) {
+            selectedRegionName = streamInfo.regions.first(where: { $0.isDefault })?.name ?? streamInfo.regions.first?.name
+        }
+        statusMessage = "Xbox Cloud credentials refreshed"
+    }
+
+    private func refreshUserToken(_ refreshToken: String) async throws -> UserOAuthToken {
+        let url = URL(string: "https://login.live.com/oauth20_token.srf")!
+        let body = formEncoded([
+            "client_id": Constants.appID,
+            "grant_type": "refresh_token",
+            "refresh_token": refreshToken,
+            "scope": Constants.userScope
+        ])
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.httpBody = Data(body.utf8)
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.setValue("no-store, must-revalidate, no-cache", forHTTPHeaderField: "Cache-Control")
+        let object = try jsonObject(await perform(request))
+        return UserOAuthToken(
+            accessToken: try string(object, "access_token"),
+            refreshToken: (object["refresh_token"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? refreshToken
+        )
+    }
+
+    private func saveRegions(_ regions: [XboxCloudRegion]) throws {
+        let data = try JSONEncoder().encode(regions)
+        try SecureTokenStore.save(data.base64EncodedString(), account: "xbl.cloud-regions")
     }
 
     private func openMicrosoftSignIn(_ url: URL) async throws -> URL {
@@ -339,8 +494,20 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
         let object = try jsonObject(data)
         let settings = object["offeringSettings"] as? [String: Any] ?? [:]
         let regionObjects = settings["regions"] as? [[String: Any]] ?? []
-        let regions = regionObjects.compactMap { $0["name"] as? String }
-        return CloudStreamingToken(gsToken: try string(object, "gsToken"), regions: regions)
+        let regions = regionObjects.compactMap { item -> XboxCloudRegion? in
+            guard let name = item["name"] as? String,
+                  let rawBaseURI = item["baseUri"] as? String,
+                  let baseURI = URL(string: rawBaseURI),
+                  baseURI.scheme?.lowercased() == "https",
+                  baseURI.host != nil else { return nil }
+            return XboxCloudRegion(name: name, baseURI: baseURI, isDefault: item["isDefault"] as? Bool ?? false)
+        }
+        guard !regions.isEmpty else { throw XboxAuthenticationError.missingValue("available cloud regions") }
+        return CloudStreamingToken(
+            gsToken: try string(object, "gsToken"),
+            regions: regions,
+            durationInSeconds: object["durationInSeconds"] as? Int ?? 14_400
+        )
     }
 
     private func signedJSONRequest(url: URL, payload: [String: Any], using key: XBLProofKey) async throws -> Data {
@@ -425,5 +592,6 @@ private struct SisuAuthorization {
 
 private struct CloudStreamingToken {
     let gsToken: String
-    let regions: [String]
+    let regions: [XboxCloudRegion]
+    let durationInSeconds: Int
 }

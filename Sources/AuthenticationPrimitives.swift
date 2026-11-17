@@ -49,8 +49,9 @@ struct PKCEChallenge {
     }
 }
 
-/// Ephemeral P-256 proof key used to sign Xbox Live proof-of-possession requests.
-/// The private key is intentionally not exported or persisted.
+/// P-256 proof key used to sign Xbox Live proof-of-possession requests.
+/// Its raw private representation is stored only in the app's device-only Keychain item
+/// so the same key can be restored for silent token renewal.
 struct XBLProofKey {
     private let privateKey: P256.Signing.PrivateKey
 
