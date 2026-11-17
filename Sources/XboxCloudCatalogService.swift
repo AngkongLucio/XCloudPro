@@ -1,6 +1,6 @@
 import Foundation
 
-struct XboxCloudCatalogError: Error, LocalizedError {
+enum XboxCloudCatalogError: Error, LocalizedError {
     case invalidResponse
     case httpStatus(Int)
 
