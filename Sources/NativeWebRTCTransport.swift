@@ -255,6 +255,16 @@ extension NativeWebRTCTransport: RTCPeerConnectionDelegate {
 struct NativeWebRTCVideoSurface: UIViewRepresentable {
     @ObservedObject var transport: NativeWebRTCTransport
 
+    final class Coordinator {
+        weak var transport: NativeWebRTCTransport?
+    }
+
+    func makeCoordinator() -> Coordinator {
+        let coordinator = Coordinator()
+        coordinator.transport = transport
+        return coordinator
+    }
+
     func makeUIView(context: Context) -> RTCMTLVideoView {
         let view = RTCMTLVideoView(frame: .zero)
         view.videoContentMode = .scaleAspectFit
@@ -263,10 +273,11 @@ struct NativeWebRTCVideoSurface: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: RTCMTLVideoView, context: Context) {
+        context.coordinator.transport = transport
         transport.attach(renderer: uiView)
     }
 
-    static func dismantleUIView(_ uiView: RTCMTLVideoView, coordinator: ()) {
-        // Renderer is removed when the owning player view is dismissed.
+    static func dismantleUIView(_ uiView: RTCMTLVideoView, coordinator: Coordinator) {
+        coordinator.transport?.detach(renderer: uiView)
     }
 }
