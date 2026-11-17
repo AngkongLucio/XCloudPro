@@ -30,6 +30,7 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
     private var messageDataChannel: RTCDataChannel?
     private var inputSequence: UInt32 = 0
     private var latestGamepadState = XboxGamepadState.neutral
+    private weak var controllerManager: ControllerManager?
     private var inputTask: Task<Void, Never>?
     private var localCandidates: [RTCIceCandidate] = []
     private var iceGatheringContinuation: CheckedContinuation<[RTCIceCandidate], Error>?
@@ -37,8 +38,16 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
     private var openedDataChannels = Set<ObjectIdentifier>()
 
     func attachControllerManager(_ manager: ControllerManager) {
+        controllerManager = manager
         manager.onGamepadStateChanged = { [weak self] state in
             self?.sendGamepadState(state)
+        }
+        manager.onControllerConnectionChanged = { [weak self] connected in
+            self?.sendControlMessage([
+                "message": "gamepadChanged",
+                "gamepadIndex": 0,
+                "wasAdded": connected
+            ])
         }
     }
 
@@ -196,6 +205,13 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
                 "gamepadIndex": 0,
                 "wasAdded": false
             ])
+            if controllerManager?.connectedControllers.isEmpty == false {
+                sendControlMessage([
+                    "message": "gamepadChanged",
+                    "gamepadIndex": 0,
+                    "wasAdded": true
+                ])
+            }
             sendControlMessage([
                 "message": "VideoPreference",
                 "type": "VideoPreference",
