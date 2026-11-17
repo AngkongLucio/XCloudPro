@@ -70,7 +70,7 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
                 CloudICECandidate(
                     candidate: $0.sdp,
                     sdpMLineIndex: String($0.sdpMLineIndex),
-                    sdpMid: $0.sdpMid
+                    sdpMid: $0.sdpMid ?? "0"
                 )
             }
             let incoming = try await service.exchangeLocalICECandidates(outgoing)
