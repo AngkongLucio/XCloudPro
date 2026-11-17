@@ -18,6 +18,7 @@ struct XboxCloudRegion: Codable, Equatable, Identifiable {
 
 enum XboxAuthenticationError: LocalizedError {
     case invalidResponse
+    case invalidEmail
     case serverRejected(Int, String)
     case missingValue(String)
     case invalidRedirect
@@ -28,6 +29,7 @@ enum XboxAuthenticationError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidResponse: return "Microsoft returned an invalid authentication response."
+        case .invalidEmail: return "Enter your Microsoft email address to continue."
         case .serverRejected(let code, let message): return "Xbox authentication failed (HTTP \(code)): \(message)"
         case .missingValue(let name): return "The Xbox authentication response is missing \(name)."
         case .invalidRedirect: return "The Microsoft sign-in redirect was invalid."
@@ -80,8 +82,12 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
         restoreSavedProfile()
     }
 
-    func signIn() async throws {
+    func signIn(email: String) async throws {
         guard !isAuthenticating else { return }
+        let emailHint = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard emailHint.contains("@"), emailHint.split(separator: "@").count == 2 else {
+            throw XboxAuthenticationError.invalidEmail
+        }
         isAuthenticating = true
         errorMessage = nil
         statusMessage = "Preparing secure sign-in…"
@@ -104,7 +110,8 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
             )
 
             statusMessage = "Waiting for Microsoft sign-in…"
-            let callbackURL = try await openMicrosoftSignIn(authorizationURL)
+            let hintedURL = try microsoftSignInURL(authorizationURL, email: emailHint)
+            let callbackURL = try await openMicrosoftSignIn(hintedURL)
             guard let components = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false),
                   let returnedState = components.queryItems?.first(where: { $0.name == "state" })?.value,
                   let code = components.queryItems?.first(where: { $0.name == "code" })?.value else {
@@ -320,6 +327,20 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
     private func saveRegions(_ regions: [XboxCloudRegion]) throws {
         let data = try JSONEncoder().encode(regions)
         try SecureTokenStore.save(data.base64EncodedString(), account: "xbl.cloud-regions")
+    }
+
+    private func microsoftSignInURL(_ url: URL, email: String) throws -> URL {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            throw XboxAuthenticationError.invalidRedirect
+        }
+        var queryItems = components.queryItems ?? []
+        queryItems.removeAll { $0.name == "login_hint" }
+        queryItems.append(URLQueryItem(name: "login_hint", value: email))
+        components.queryItems = queryItems
+        guard let hintedURL = components.url else {
+            throw XboxAuthenticationError.invalidRedirect
+        }
+        return hintedURL
     }
 
     private func openMicrosoftSignIn(_ url: URL) async throws -> URL {
