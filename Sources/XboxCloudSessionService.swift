@@ -146,12 +146,8 @@ final class XboxCloudSessionService {
 
         for _ in 0..<60 {
             try Task.checkCancellation()
-            let get = makeRequest(
-                path: "v5/sessions/cloud/\(sessionID)/sdp",
-                method: "GET"
-            )
             if let exchange = try await fetchExchangeResponse(
-                path: "v5/sessions/cloud/\\(sessionID)/sdp"
+                path: "v5/sessions/cloud/\(sessionID)/sdp"
             ), let data = exchange.data(using: .utf8) {
                 do {
                     return try JSONDecoder().decode(CloudSDPAnswer.self, from: data)
@@ -183,12 +179,8 @@ final class XboxCloudSessionService {
 
         for _ in 0..<60 {
             try Task.checkCancellation()
-            let get = makeRequest(
-                path: "v5/sessions/cloud/\(sessionID)/ice",
-                method: "GET"
-            )
             if let exchange = try await fetchExchangeResponse(
-                path: "v5/sessions/cloud/\\(sessionID)/ice"
+                path: "v5/sessions/cloud/\(sessionID)/ice"
             ), let data = exchange.data(using: .utf8) {
                 if let array = try? JSONDecoder().decode([CloudICECandidate].self, from: data) {
                     return array
