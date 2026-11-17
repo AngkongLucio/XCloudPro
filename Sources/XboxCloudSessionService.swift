@@ -150,9 +150,9 @@ final class XboxCloudSessionService {
                 path: "v5/sessions/cloud/\(sessionID)/sdp",
                 method: "GET"
             )
-            let envelope: CloudExchangeEnvelope = try await send(get)
-            if let exchange = envelope.exchangeResponse,
-               let data = exchange.data(using: .utf8) {
+            if let exchange = try await fetchExchangeResponse(
+                path: "v5/sessions/cloud/\\(sessionID)/sdp"
+            ), let data = exchange.data(using: .utf8) {
                 do {
                     return try JSONDecoder().decode(CloudSDPAnswer.self, from: data)
                 } catch {
@@ -187,9 +187,9 @@ final class XboxCloudSessionService {
                 path: "v5/sessions/cloud/\(sessionID)/ice",
                 method: "GET"
             )
-            let envelope: CloudExchangeEnvelope = try await send(get)
-            if let exchange = envelope.exchangeResponse,
-               let data = exchange.data(using: .utf8) {
+            if let exchange = try await fetchExchangeResponse(
+                path: "v5/sessions/cloud/\\(sessionID)/ice"
+            ), let data = exchange.data(using: .utf8) {
                 if let array = try? JSONDecoder().decode([CloudICECandidate].self, from: data) {
                     return array
                 }
@@ -268,6 +268,28 @@ final class XboxCloudSessionService {
         }
 
         throw CloudSessionServiceError.timedOut
+    }
+
+
+    private func fetchExchangeResponse(path: String) async throws -> String? {
+        let request = makeRequest(path: path, method: "GET")
+        let (data, response) = try await urlSession.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw CloudSessionServiceError.invalidResponse
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let message = String(data: data, encoding: .utf8) ?? "No error details"
+            throw CloudSessionServiceError.httpStatus(http.statusCode, message)
+        }
+        guard !data.isEmpty else { return nil }
+        if let envelope = try? JSONDecoder().decode(CloudExchangeEnvelope.self, from: data) {
+            guard let value = envelope.exchangeResponse, !value.isEmpty else { return nil }
+            return value
+        }
+        if let emptyString = try? JSONDecoder().decode(String.self, from: data), emptyString.isEmpty {
+            return nil
+        }
+        throw CloudSessionServiceError.invalidResponse
     }
 
     private func fetchConfiguration(sessionID: String) async throws -> CloudSessionConfiguration {
