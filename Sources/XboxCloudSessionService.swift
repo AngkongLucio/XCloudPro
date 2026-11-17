@@ -110,12 +110,17 @@ final class XboxCloudSessionService {
         }
         activeSessionID = sessionID
 
-        try await waitUntilProvisioned(
-            sessionID: sessionID,
-            userTokenProvider: userTokenProvider
-        )
-
-        return try await fetchConfiguration(sessionID: sessionID)
+        do {
+            try await waitUntilProvisioned(
+                sessionID: sessionID,
+                userTokenProvider: userTokenProvider
+            )
+            return try await fetchConfiguration(sessionID: sessionID)
+        } catch {
+            // Do not leave a provisioned/partially provisioned session running after failure.
+            try? await stopCloudGame()
+            throw error
+        }
     }
 
     func sendKeepAlive() async throws {
@@ -257,7 +262,6 @@ private struct CloudSessionStateResponse: Decodable {
     let errorDetails: ErrorDetails?
 
     struct ErrorDetails: Decodable {
-        let code: String?
         let message: String?
     }
 }
