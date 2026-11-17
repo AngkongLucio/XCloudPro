@@ -123,6 +123,86 @@ final class XboxCloudSessionService {
         }
     }
 
+
+    /// Exchanges a native WebRTC SDP offer with the Xbox Cloud session and
+    /// returns the remote SDP answer. The peer connection itself is owned by
+    /// the native media transport layer.
+    func exchangeSDPOffer(_ sdp: String) async throws -> CloudSDPAnswer {
+        guard let sessionID = activeSessionID else {
+            throw CloudSessionServiceError.missingSessionID
+        }
+        let payload = CloudSDPOfferRequest(
+            messageType: "offer",
+            sdp: sdp,
+            configuration: .init()
+        )
+        let body = try JSONEncoder().encode(payload)
+        let post = makeRequest(
+            path: "v5/sessions/cloud/\(sessionID)/sdp",
+            method: "POST",
+            body: body
+        )
+        let _: EmptyResponse = try await send(post)
+
+        for _ in 0..<60 {
+            try Task.checkCancellation()
+            let get = makeRequest(
+                path: "v5/sessions/cloud/\(sessionID)/sdp",
+                method: "GET"
+            )
+            let envelope: CloudExchangeEnvelope = try await send(get)
+            if let exchange = envelope.exchangeResponse,
+               let data = exchange.data(using: .utf8) {
+                do {
+                    return try JSONDecoder().decode(CloudSDPAnswer.self, from: data)
+                } catch {
+                    throw CloudSessionServiceError.invalidResponse
+                }
+            }
+            try await Task.sleep(nanoseconds: 1_000_000_000)
+        }
+        throw CloudSessionServiceError.timedOut
+    }
+
+    /// Sends local ICE candidates and polls the exchange endpoint for the
+    /// remote candidates returned by the Xbox Cloud host.
+    func exchangeLocalICECandidates(
+        _ candidates: [CloudICECandidate]
+    ) async throws -> [CloudICECandidate] {
+        guard let sessionID = activeSessionID else {
+            throw CloudSessionServiceError.missingSessionID
+        }
+        let payload = CloudICEPostRequest(messageType: "iceCandidate", candidate: candidates)
+        let body = try JSONEncoder().encode(payload)
+        let post = makeRequest(
+            path: "v5/sessions/cloud/\(sessionID)/ice",
+            method: "POST",
+            body: body
+        )
+        let _: EmptyResponse = try await send(post)
+
+        for _ in 0..<60 {
+            try Task.checkCancellation()
+            let get = makeRequest(
+                path: "v5/sessions/cloud/\(sessionID)/ice",
+                method: "GET"
+            )
+            let envelope: CloudExchangeEnvelope = try await send(get)
+            if let exchange = envelope.exchangeResponse,
+               let data = exchange.data(using: .utf8) {
+                if let array = try? JSONDecoder().decode([CloudICECandidate].self, from: data) {
+                    return array
+                }
+                if let dictionary = try? JSONDecoder().decode([String: CloudICECandidate].self, from: data) {
+                    return dictionary.keys.sorted().compactMap { dictionary[$0] }
+                }
+                throw CloudSessionServiceError.invalidResponse
+            }
+            try await Task.sleep(nanoseconds: 1_000_000_000)
+        }
+        throw CloudSessionServiceError.timedOut
+    }
+
     func sendKeepAlive() async throws {
         guard let sessionID = activeSessionID else { return }
         let request = makeRequest(
@@ -272,4 +352,56 @@ private struct ConnectCloudSessionRequest: Encodable {
 
 private struct EmptyResponse: Decodable {
     init() {}
+}
+
+private struct CloudSDPOfferRequest: Encodable {
+    let messageType: String
+    let sdp: String
+    let configuration: SignalingConfiguration
+
+    struct SignalingConfiguration: Encodable {
+        let chatConfiguration = ChatConfiguration()
+        let chat = VersionRange(minVersion: 1, maxVersion: 1)
+        let control = VersionRange(minVersion: 1, maxVersion: 3)
+        let input = VersionRange(minVersion: 1, maxVersion: 8)
+        let message = VersionRange(minVersion: 1, maxVersion: 1)
+
+        struct ChatConfiguration: Encodable {
+            let bytesPerSample = 2
+            let expectedClipDurationMs = 20
+            let format = AudioFormat()
+            let numChannels = 1
+            let sampleFrequencyHz = 24_000
+
+            struct AudioFormat: Encodable {
+                let codec = "opus"
+                let container = "webm"
+            }
+        }
+
+        struct VersionRange: Encodable {
+            let minVersion: Int
+            let maxVersion: Int
+        }
+    }
+}
+
+struct CloudSDPAnswer: Decodable {
+    let sdp: String
+    let sdpType: String?
+}
+
+struct CloudICECandidate: Codable {
+    let candidate: String
+    let sdpMLineIndex: String
+    let sdpMid: String
+}
+
+private struct CloudICEPostRequest: Encodable {
+    let messageType: String
+    let candidate: [CloudICECandidate]
+}
+
+private struct CloudExchangeEnvelope: Decodable {
+    let exchangeResponse: String?
 }
