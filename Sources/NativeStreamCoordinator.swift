@@ -11,8 +11,8 @@ final class NativeStreamCoordinator: ObservableObject {
     private var service: XboxCloudSessionService?
     private var transportObservation: AnyCancellable?
 
-    init(transport: NativeWebRTCTransport = NativeWebRTCTransport()) {
-        self.transport = transport
+    init(transport: NativeWebRTCTransport? = nil) {
+        self.transport = transport ?? NativeWebRTCTransport()
         self.transportObservation = transport.$state.sink { [weak self] state in
             Task { @MainActor in
                 self?.isStreaming = state == .connected
