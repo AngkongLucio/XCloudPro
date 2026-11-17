@@ -394,7 +394,7 @@ struct CloudSDPAnswer: Decodable {
 struct CloudICECandidate: Codable {
     let candidate: String
     let sdpMLineIndex: String
-    let sdpMid: String
+    let sdpMid: String?
 }
 
 private struct CloudICEPostRequest: Encodable {
