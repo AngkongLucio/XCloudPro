@@ -224,6 +224,77 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
         _ = channel.sendData(RTCDataBuffer(data: data, isBinary: false))
     }
 
+    private func handleMessageChannelData(_ data: Data) {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let type = object["type"] as? String else { return }
+
+        if type == "HandshakeAck" {
+            sendMessageEnvelope(
+                target: "/streaming/systemUi/configuration",
+                content: ["version": [0, 2, 0], "systemUis": []]
+            )
+            sendMessageEnvelope(
+                target: "/streaming/properties/clientappinstallidchanged",
+                content: ["clientAppInstallId": "c97d7ee0-73b2-4239-bf1d-9d805a338429"]
+            )
+            sendMessageEnvelope(
+                target: "/streaming/characteristics/orientationchanged",
+                content: ["orientation": 0]
+            )
+            sendMessageEnvelope(
+                target: "/streaming/characteristics/touchinputenabledchanged",
+                content: ["touchInputEnabled": false]
+            )
+            sendMessageEnvelope(
+                target: "/streaming/characteristics/clientdevicecapabilities",
+                content: [:]
+            )
+            sendMessageEnvelope(
+                target: "/streaming/characteristics/dimensionschanged",
+                content: [
+                    "horizontal": 1920,
+                    "vertical": 1080,
+                    "preferredWidth": 1920,
+                    "preferredHeight": 1080,
+                    "safeAreaLeft": 0,
+                    "safeAreaTop": 0,
+                    "safeAreaRight": 1920,
+                    "safeAreaBottom": 1080,
+                    "supportsCustomResolution": true
+                ]
+            )
+        } else if (type == "TransactionStart" || type == "Message"),
+                  let target = object["target"] as? String,
+                  target == "/streaming/sessionLifetimeManagement/serverInitiatedDisconnect",
+                  let id = object["id"] as? String {
+            sendMessageObject([
+                "type": "TransactionComplete",
+                "content": "",
+                "id": id,
+                "cv": ""
+            ])
+            state = .failed("Xbox ended the cloud streaming session.")
+        }
+    }
+
+    private func sendMessageEnvelope(target: String, content: [String: Any]) {
+        guard let contentData = try? JSONSerialization.data(withJSONObject: content),
+              let contentText = String(data: contentData, encoding: .utf8) else { return }
+        sendMessageObject([
+            "type": "Message",
+            "content": contentText,
+            "id": UUID().uuidString.lowercased(),
+            "target": target,
+            "cv": ""
+        ])
+    }
+
+    private func sendMessageObject(_ object: [String: Any]) {
+        guard let channel = messageDataChannel, channel.readyState == .open,
+              let data = try? JSONSerialization.data(withJSONObject: object) else { return }
+        _ = channel.sendData(RTCDataBuffer(data: data, isBinary: false))
+    }
+
     private func sendControlMessage(_ object: [String: Any]) {
         guard let channel = controlDataChannel, channel.readyState == .open,
               let data = try? JSONSerialization.data(withJSONObject: object),
@@ -457,7 +528,11 @@ extension NativeWebRTCTransport: RTCDataChannelDelegate {
         Task { @MainActor in self.handleOpenedDataChannel(dataChannel) }
     }
 
-    nonisolated func dataChannel(_ dataChannel: RTCDataChannel, didReceiveMessageWith buffer: RTCDataBuffer) {}
+    nonisolated func dataChannel(_ dataChannel: RTCDataChannel, didReceiveMessageWith buffer: RTCDataBuffer) {
+        guard dataChannel.label.lowercased() == "message", !buffer.isBinary else { return }
+        let data = buffer.data
+        Task { @MainActor in self.handleMessageChannelData(data) }
+    }
 }
 
 private extension Data {
