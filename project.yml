@@ -24,6 +24,12 @@ targets:
       - path: Sources
     dependencies:
       - package: WebRTC
+    info:
+      properties:
+        CFBundleURLTypes:
+          - CFBundleURLName: com.angkonglucio.xcloudpro.xal
+            CFBundleURLSchemes:
+              - ms-xal-000000004c20a908
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.angkonglucio.xcloudpro
