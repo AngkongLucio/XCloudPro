@@ -18,6 +18,8 @@ struct XboxGamepadState: Equatable {
 final class ControllerManager: ObservableObject {
     @Published private(set) var connectedControllers: [String] = []
     var onGamepadStateChanged: ((XboxGamepadState) -> Void)?
+    var onControllerConnectionChanged: ((Bool) -> Void)?
+    private var lastReportedControllerConnection: Bool?
 
     init() {
         NotificationCenter.default.addObserver(self, selector: #selector(controllerDidChange(_:)), name: .GCControllerDidConnect, object: nil)
@@ -43,6 +45,12 @@ final class ControllerManager: ObservableObject {
         connectedControllers = controllers.map { controller in
             let name = controller.vendorName?.trimmingCharacters(in: .whitespacesAndNewlines)
             return (name?.isEmpty == false ? name! : "Game Controller")
+        }
+
+        let hasExtendedController = controllers.contains { $0.extendedGamepad != nil }
+        if lastReportedControllerConnection != hasExtendedController {
+            lastReportedControllerConnection = hasExtendedController
+            onControllerConnectionChanged?(hasExtendedController)
         }
 
         for controller in controllers {
