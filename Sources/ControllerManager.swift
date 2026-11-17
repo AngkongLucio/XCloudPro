@@ -82,12 +82,12 @@ final class ControllerManager: ObservableObject {
         if gamepad.buttonY.isPressed { mask |= 1 << 6 }
         if gamepad.dpad.up.isPressed { mask |= 1 << 7 }
         if gamepad.dpad.down.isPressed { mask |= 1 << 8 }
-        if gamepad.dpad.left.isPressed { mask |= 1 << 00 }
-        if gamepad.dpad.right.isPressed { mask |= 1 << 01 }
-        if gamepad.leftShoulder.isPressed { mask |= 1 << 02 }
-        if gamepad.rightShoulder.isPressed { mask |= 1 << 03 }
-        if gamepad.leftThumbstickButton?.isPressed == true { mask |= 1 << 04 }
-        if gamepad.rightThumbstickButton?.isPressed == true { mask |= 1 << 05 }
+        if gamepad.dpad.left.isPressed { mask |= 1 << 9 }
+        if gamepad.dpad.right.isPressed { mask |= 1 << 10 }
+        if gamepad.leftShoulder.isPressed { mask |= 1 << 11 }
+        if gamepad.rightShoulder.isPressed { mask |= 1 << 12 }
+        if gamepad.leftThumbstickButton?.isPressed == true { mask |= 1 << 13 }
+        if gamepad.rightThumbstickButton?.isPressed == true { mask |= 1 << 14 }
 
         onGamepadStateChanged?(
             XboxGamepadState(
