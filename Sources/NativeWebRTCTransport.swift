@@ -80,7 +80,7 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
             let outgoing = gathered.map {
                 CloudICECandidate(
                     candidate: $0.sdp,
-                    sdpMLineIndex: Int($0.sdpMLineIndex),
+                    sdpMLineIndex: String($0.sdpMLineIndex),
                     sdpMid: $0.sdpMid ?? "0"
                 )
             }
@@ -93,7 +93,7 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
                     : item.candidate
                 let candidate = RTCIceCandidate(
                     sdp: candidateText,
-                    sdpMLineIndex: Int32(item.sdpMLineIndex),
+                    sdpMLineIndex: Int32(item.sdpMLineIndex) ?? 0,
                     sdpMid: item.sdpMid
                 )
                 try await connection.add(candidate)

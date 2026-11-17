@@ -446,7 +446,7 @@ struct CloudSDPAnswer: Decodable {
 
 struct CloudICECandidate: Codable {
     let candidate: String
-    let sdpMLineIndex: Int
+    let sdpMLineIndex: String
     let sdpMid: String?
 }
 
