@@ -169,7 +169,7 @@ final class XboxCloudSessionService {
         guard let sessionID = activeSessionID else {
             throw CloudSessionServiceError.missingSessionID
         }
-        let payload = CloudICEPostRequest(iceCandidates: candidates)
+        let payload = CloudICEPostRequest(messageType: "iceCandidate", candidate: candidates)
         let body = try JSONEncoder().encode(payload)
         let post = makeRequest(
             path: "v5/sessions/cloud/\(sessionID)/ice",
@@ -446,12 +446,50 @@ struct CloudSDPAnswer: Decodable {
 
 struct CloudICECandidate: Codable {
     let candidate: String
-    let sdpMLineIndex: String
+    let sdpMLineIndex: Int32
     let sdpMid: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case candidate
+        case sdpMLineIndex
+        case sdpMid
+    }
+
+    init(candidate: String, sdpMLineIndex: Int32, sdpMid: String?) {
+        self.candidate = candidate
+        self.sdpMLineIndex = sdpMLineIndex
+        self.sdpMid = sdpMid
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        candidate = try container.decode(String.self, forKey: .candidate)
+        sdpMid = try container.decodeIfPresent(String.self, forKey: .sdpMid)
+        if let index = try? container.decode(Int32.self, forKey: .sdpMLineIndex) {
+            sdpMLineIndex = index
+        } else if let rawIndex = try? container.decode(String.self, forKey: .sdpMLineIndex),
+                  let index = Int32(rawIndex) {
+            sdpMLineIndex = index
+        } else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .sdpMLineIndex,
+                in: container,
+                debugDescription: "Invalid SDP media-line index."
+            )
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(candidate, forKey: .candidate)
+        try container.encode(sdpMLineIndex, forKey: .sdpMLineIndex)
+        try container.encodeIfPresent(sdpMid, forKey: .sdpMid)
+    }
 }
 
 private struct CloudICEPostRequest: Encodable {
-    let iceCandidates: [CloudICECandidate]
+    let messageType: String
+    let candidate: [CloudICECandidate]
 }
 
 private struct CloudExchangeEnvelope: Decodable {
