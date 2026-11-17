@@ -532,7 +532,7 @@ struct ContentView: View {
                 titleID: game.id,
                 regionBaseURL: credentials.region.baseURI,
                 gsToken: credentials.gsToken,
-                osName: "ios",
+                osName: "windows",
                 deviceInfoHeader: makeDeviceInfoHeader(),
                 msalUserTokenProvider: { try await authenticationService.cloudTransferToken() }
             )
@@ -545,15 +545,14 @@ struct ContentView: View {
     }
 
     private func makeDeviceInfoHeader() -> String {
-        let bounds = UIScreen.main.nativeBounds
-        let width = Int(max(bounds.width, bounds.height))
-        let height = Int(min(bounds.width, bounds.height))
+        // Match the current Xbox.com streaming client profile used by XStreaming.
+        // Rendering and WebRTC remain fully native inside XCloudPro.
         let info: [String: Any] = [
             "appInfo": [
                 "env": [
-                    "clientAppId": "com.angkonglucio.xcloudpro",
-                    "clientAppType": "native",
-                    "clientAppVersion": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0.0",
+                    "clientAppId": "www.xbox.com",
+                    "clientAppType": "browser",
+                    "clientAppVersion": "26.1.97",
                     "clientSdkVersion": "10.3.7",
                     "httpEnvironment": "prod",
                     "sdkInstallId": ""
@@ -561,24 +560,28 @@ struct ContentView: View {
             ],
             "dev": [
                 "hw": [
-                    "make": "Apple",
-                    "model": UIDevice.current.model,
-                    "sdktype": "native"
+                    "make": "Microsoft",
+                    "model": "unknown",
+                    "sdktype": "web"
                 ],
                 "os": [
-                    "name": "iOS",
-                    "ver": UIDevice.current.systemVersion,
-                    "platform": "mobile"
+                    "name": "windows",
+                    "ver": "22631.2715",
+                    "platform": "desktop"
                 ],
                 "displayInfo": [
                     "dimensions": [
-                        "widthInPixels": width,
-                        "heightInPixels": height
+                        "widthInPixels": 1920,
+                        "heightInPixels": 1080
                     ],
                     "pixelDensity": [
-                        "dpiX": UIScreen.main.scale,
-                        "dpiY": UIScreen.main.scale
+                        "dpiX": 1,
+                        "dpiY": 1
                     ]
+                ],
+                "browser": [
+                    "browserName": "chrome",
+                    "browserVersion": "130.0"
                 ]
             ]
         ]
