@@ -363,9 +363,9 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
         packet.append(0) // Primary controller index
         packet.appendLittleEndian(state.buttons)
         packet.appendLittleEndian(state.leftX)
-        packet.appendLittleEndian(state.leftY)
+        packet.appendLittleEndian(-state.leftY)
         packet.appendLittleEndian(state.rightX)
-        packet.appendLittleEndian(state.rightY)
+        packet.appendLittleEndian(-state.rightY)
         packet.appendLittleEndian(state.leftTrigger)
         packet.appendLittleEndian(state.rightTrigger)
         packet.appendLittleEndian(UInt32(1)) // Physical controller (little-endian)
