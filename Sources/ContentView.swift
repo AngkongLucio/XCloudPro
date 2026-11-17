@@ -29,8 +29,10 @@ private enum ConsolePalette {
 
 struct ContentView: View {
     @EnvironmentObject private var controllerManager: ControllerManager
+    @EnvironmentObject private var authenticationService: XboxAuthenticationService
     @State private var selectedTab: ConsoleTab = .home
     @State private var showPlayerStatus = false
+    @State private var showAuthenticationError = false
     @AppStorage("xcloudpro.haptics") private var hapticsEnabled = true
     @AppStorage("xcloudpro.showNetworkStats") private var showNetworkStats = true
 
@@ -72,7 +74,12 @@ struct ContentView: View {
         .alert("Native streaming is not connected yet", isPresented: $showPlayerStatus) {
             Button("OK", role: .cancel) { }
         } message: {
-            Text("The Xbox-style dashboard is in place. The native Xbox Cloud authentication and streaming transport still need to be integrated and tested before games can launch.")
+            Text("Microsoft sign-in is being integrated. Gameplay will be enabled only after the native stream transport and controller input are validated.")
+        }
+        .alert("Microsoft sign-in", isPresented: $showAuthenticationError) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(authenticationService.errorMessage ?? "Sign-in could not be completed.")
         }
     }
 
@@ -246,38 +253,79 @@ struct ContentView: View {
 
     private var accountPage: some View {
         VStack(alignment: .leading, spacing: 20) {
-            heading("MICROSOFT ACCOUNT", subtitle: "Use the same Microsoft account you use for Xbox Cloud Gaming in Safari.")
+            heading("MICROSOFT ACCOUNT", subtitle: "Sign in with the same account you use for Xbox Cloud Gaming in Safari.")
 
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 15) {
                 HStack(spacing: 14) {
                     Image(systemName: "person.crop.circle.fill")
-                        .font(.system(size: 42)).foregroundStyle(ConsolePalette.green)
+                        .font(.system(size: 44)).foregroundStyle(ConsolePalette.green)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Xbox account")
-                            .font(.system(size: 15, weight: .bold))
-                        Text("Not signed in")
+                        Text(authenticationService.account?.gamertag ?? "Xbox account")
+                            .font(.system(size: 16, weight: .bold))
+                        Text(authenticationService.statusMessage)
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(ConsolePalette.muted)
                     }
                     Spacer()
-                    Circle().fill(.orange).frame(width: 9, height: 9)
+                    Circle()
+                        .fill(authenticationService.account == nil ? .orange : ConsolePalette.green)
+                        .frame(width: 9, height: 9)
                 }
 
                 Rectangle().fill(.white.opacity(0.08)).frame(height: 1)
 
-                Label("Microsoft sign-in is not connected yet", systemImage: "lock.circle")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.86))
-                Text("The native OAuth, Xbox Sisu, and XAL token flow must be completed before this app can securely show your Xbox profile, subscription, and cloud game library. Your Microsoft password will never be requested or stored by XCloudPro.")
-                    .font(.system(size: 11)).foregroundStyle(ConsolePalette.muted)
-                    .fixedSize(horizontal: false, vertical: true)
+                Button {
+                    Task {
+                        do {
+                            try await authenticationService.signIn()
+                        } catch {
+                            showAuthenticationError = true
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 9) {
+                        if authenticationService.isAuthenticating {
+                            ProgressView().tint(.black)
+                        } else {
+                            Image(systemName: "xbox.logo")
+                        }
+                        Text(authenticationService.isAuthenticating ? "CONNECTING TO MICROSOFT…" : "SIGN IN WITH MICROSOFT")
+                            .font(.system(size: 11, weight: .black)).tracking(0.8)
+                    }
+                    .foregroundStyle(.black)
+                    .frame(maxWidth: .infinity).frame(height: 46)
+                    .background(ConsolePalette.green, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .disabled(authenticationService.isAuthenticating || authenticationService.account != nil)
+
+                if authenticationService.account != nil {
+                    Label("Xbox account connected", systemImage: "checkmark.seal.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(ConsolePalette.green)
+                    if !authenticationService.availableRegions.isEmpty {
+                        Text("Available cloud regions: " + authenticationService.availableRegions.joined(separator: ", "))
+                            .font(.system(size: 10)).foregroundStyle(ConsolePalette.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Button("SIGN OUT", role: .destructive) {
+                        authenticationService.signOut()
+                    }
+                    .font(.system(size: 10, weight: .bold))
+                    .padding(.top, 2)
+                } else {
+                    Text("A secure Microsoft sign-in window will open. XCloudPro does not ask for or store your Microsoft password.")
+                        .font(.system(size: 10)).foregroundStyle(ConsolePalette.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .padding(18)
             .background(ConsolePalette.surface, in: RoundedRectangle(cornerRadius: 18))
 
             settingsInfo("Account provider", value: "Microsoft / Xbox", icon: "person.badge.key.fill")
-            settingsInfo("Account session", value: "Not connected", icon: "key.horizontal")
-            settingsInfo("Profile and entitlements", value: "Available after sign-in integration", icon: "person.text.rectangle")
+            settingsInfo("Gamertag", value: authenticationService.account?.gamertag ?? "Not connected", icon: "person.text.rectangle")
+            settingsInfo("Xbox user ID", value: authenticationService.account?.id ?? "Available after sign-in", icon: "number")
+            settingsInfo("Cloud token", value: authenticationService.account == nil ? "Not available" : "Retrieved; refresh flow pending", icon: "key.horizontal")
         }
     }
 
