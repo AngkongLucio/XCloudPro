@@ -305,13 +305,23 @@ struct ContentView: View {
                                 Task { await startCloudGame(game) }
                             } label: {
                                 VStack(alignment: .leading, spacing: 10) {
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .fill(LinearGradient(colors: [ConsolePalette.elevated, ConsolePalette.surface], startPoint: .topLeading, endPoint: .bottomTrailing))
-                                        .overlay {
-                                            Image(systemName: "gamecontroller.fill")
-                                                .font(.system(size: 32)).foregroundStyle(ConsolePalette.green.opacity(0.8))
+                                    AsyncImage(url: game.artworkURL) { phase in
+                                        Group {
+                                            if let image = phase.image {
+                                                image.resizable().scaledToFill()
+                                            } else {
+                                                RoundedRectangle(cornerRadius: 12)
+                                                    .fill(LinearGradient(colors: [ConsolePalette.elevated, ConsolePalette.surface], startPoint: .topLeading, endPoint: .bottomTrailing))
+                                                    .overlay {
+                                                        Image(systemName: "gamecontroller.fill")
+                                                            .font(.system(size: 32)).foregroundStyle(ConsolePalette.green.opacity(0.8))
+                                                    }
+                                            }
                                         }
-                                        .frame(height: 100)
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 100)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
                                     Text(game.title)
                                         .font(.system(size: 12, weight: .bold))
                                         .foregroundStyle(.white)
