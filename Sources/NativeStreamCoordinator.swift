@@ -18,6 +18,7 @@ final class NativeStreamCoordinator: ObservableObject {
                 self?.isStreaming = state == .connected
                 if case .failed(let message) = state {
                     self?.lastError = message
+                    Task { @MainActor in await self?.stop() }
                 }
             }
         }
@@ -33,7 +34,7 @@ final class NativeStreamCoordinator: ObservableObject {
         deviceInfoHeader: String,
         msalUserTokenProvider: @escaping () async throws -> String
     ) async {
-        guard !isStarting, !isStreaming else { return }
+        guard !isStarting, !isStreaming, service == nil else { return }
         isStarting = true
         lastError = nil
 
