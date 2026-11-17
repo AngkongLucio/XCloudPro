@@ -19,14 +19,19 @@ XCloudPro has its own Xbox-console-inspired SwiftUI design. Do not copy XStreami
 - Existing Bluetooth controller detection retained.
 - Typed XboxCloudStreamingClient interface and connection-state model.
 - Secure PKCE/state generation, ephemeral P-256 proof-key creation, Xbox request-signature generation, and Keychain token storage primitives.
+- Native Xbox Cloud catalog and recently-played API client, with product-title metadata lookup.
 - Native Xbox Cloud session REST lifecycle for the /v5/sessions/cloud path: create session, poll provisioning, perform the ReadyToConnect handoff through a supplied user-token provider, fetch stream configuration, keepalive, and terminate/cleanup.
+- Native SDP offer and ICE candidate exchange against the cloud session signaling endpoints.
+- Native WebRTC receive-only audio/video peer-connection layer and Metal-backed video surface.
+- Native full-screen player shell and stream coordinator with session cleanup and connection-state reporting.
 - Cloud-session service keeps Xbox Cloud Gaming separate from console Remote Play; it does not call /sessions/home.
-- Play action clearly reports that native streaming is not connected yet.
+- Play action on the dashboard remains disabled until Microsoft sign-in and session setup are wired.
 
 ## Still required
 - Complete Microsoft OAuth/Sisu/XAL token exchange and refresh flow, including wiring the PKCE and proof-key primitives to real requests.
-- Xbox Cloud Gaming catalog and entitlement integration.
-- Native WebRTC peer connection, SDP/ICE exchange, media rendering, and controller input channel.
+- Wire the catalog client to authenticated account state and populate the dashboard/library UI.
+- Xbox Cloud WebRTC controller-input data channel and Xbox input packet mapping.
+- Validate native audio routing, remote video, ICE behavior, and stream controls against a live Xbox Cloud session.
 - Native video/audio rendering and controller input mapping.
 - Capability-backed quality settings and network diagnostics.
 - Build and test on the target iPad.
