@@ -73,21 +73,21 @@ final class ControllerManager: ObservableObject {
         }
 
         var mask: UInt16 = 0
-        if gamepad.buttonHome?.isPressed == true { mask |= 1 << 1 }
-        if gamepad.buttonMenu.isPressed { mask |= 1 << 2 }
-        if gamepad.buttonOptions?.isPressed == true { mask |= 1 << 3 }
-        if gamepad.buttonA.isPressed { mask |= 1 << 4 }
-        if gamepad.buttonB.isPressed { mask |= 1 << 5 }
-        if gamepad.buttonX.isPressed { mask |= 1 << 6 }
-        if gamepad.buttonY.isPressed { mask |= 1 << 7 }
-        if gamepad.dpad.up.isPressed { mask |= 1 << 8 }
-        if gamepad.dpad.down.isPressed { mask |= 1 << 9 }
-        if gamepad.dpad.left.isPressed { mask |= 1 << 10 }
-        if gamepad.dpad.right.isPressed { mask |= 1 << 11 }
-        if gamepad.leftShoulder.isPressed { mask |= 1 << 12 }
-        if gamepad.rightShoulder.isPressed { mask |= 1 << 13 }
-        if gamepad.leftThumbstickButton?.isPressed == true { mask |= 1 << 14 }
-        if gamepad.rightThumbstickButton?.isPressed == true { mask |= 1 << 15 }
+        if gamepad.buttonHome?.isPressed == true { mask |= 1 << 0 }
+        if gamepad.buttonMenu.isPressed { mask |= 1 << 1 }
+        if gamepad.buttonOptions?.isPressed == true { mask |= 1 << 2 }
+        if gamepad.buttonA.isPressed { mask |= 1 << 3 }
+        if gamepad.buttonB.isPressed { mask |= 1 << 4 }
+        if gamepad.buttonX.isPressed { mask |= 1 << 5 }
+        if gamepad.buttonY.isPressed { mask |= 1 << 6 }
+        if gamepad.dpad.up.isPressed { mask |= 1 << 7 }
+        if gamepad.dpad.down.isPressed { mask |= 1 << 8 }
+        if gamepad.dpad.left.isPressed { mask |= 1 << 9 }
+        if gamepad.dpad.right.isPressed { mask |= 1 << 10 }
+        if gamepad.leftShoulder.isPressed { mask |= 1 << 11 }
+        if gamepad.rightShoulder.isPressed { mask |= 1 << 12 }
+        if gamepad.leftThumbstickButton?.isPressed == true { mask |= 1 << 13 }
+        if gamepad.rightThumbstickButton?.isPressed == true { mask |= 1 << 14 }
 
         onGamepadStateChanged?(
             XboxGamepadState(
