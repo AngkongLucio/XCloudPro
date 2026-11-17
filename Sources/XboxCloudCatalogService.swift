@@ -67,7 +67,11 @@ final class XboxCloudCatalogService {
                 id: item.titleId,
                 title: metadata[productID]?.productTitle
                     ?? item.titleId.replacingOccurrences(of: "_", with: " "),
-                artworkURL: nil,
+                artworkURL: URL(
+                    string: metadata[productID]?.imageHero?.url
+                        ?? metadata[productID]?.imageTile?.url
+                        ?? ""
+                ),
                 supportsCloudPlay: item.details?.hasEntitlement ?? false
             )
         }
@@ -179,8 +183,20 @@ private struct XboxProductMetadataResponse: Decodable {
 
 private struct XboxProductMetadata: Decodable {
     let productTitle: String?
+    let imageHero: XboxCatalogImage?
+    let imageTile: XboxCatalogImage?
 
     enum CodingKeys: String, CodingKey {
         case productTitle = "ProductTitle"
+        case imageHero = "Image_Hero"
+        case imageTile = "Image_Tile"
+    }
+}
+
+private struct XboxCatalogImage: Decodable {
+    let url: String?
+
+    enum CodingKeys: String, CodingKey {
+        case url = "URL"
     }
 }
