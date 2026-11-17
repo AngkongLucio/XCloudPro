@@ -58,14 +58,17 @@ struct XBLProofKey {
         privateKey = P256.Signing.PrivateKey()
     }
 
+    private var publicCoordinates: Data {
+        // P-256 X9.63 representation is 0x04 || X(32 bytes) || Y(32 bytes).
+        Data(privateKey.publicKey.rawRepresentation.dropFirst())
+    }
+
     var jwkX: String {
-        let bytes = privateKey.publicKey.rawRepresentation
-        return Data(bytes.prefix(32)).base64URL
+        Data(publicCoordinates.prefix(32)).base64URL
     }
 
     var jwkY: String {
-        let bytes = privateKey.publicKey.rawRepresentation
-        return Data(bytes.suffix(32)).base64URL
+        Data(publicCoordinates.suffix(32)).base64URL
     }
 
     /// Creates the Xbox Live Signature header for a POST request.
