@@ -13,7 +13,7 @@ final class NativeStreamCoordinator: ObservableObject {
 
     init(transport: NativeWebRTCTransport? = nil) {
         self.transport = transport ?? NativeWebRTCTransport()
-        self.transportObservation = transport.$state.sink { [weak self] state in
+        self.transportObservation = self.transport.$state.sink { [weak self] state in
             Task { @MainActor in
                 self?.isStreaming = state == .connected
                 if case .failed(let message) = state {
