@@ -137,7 +137,7 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
             )
 
             statusMessage = "Preparing Xbox Cloud Gaming…"
-            let streamingXSTS = try await requestXSTS(deviceToken: deviceToken, titleToken: sisu.titleToken, userToken: sisu.userToken, relyingParty: "http://gssv.xboxlive.com/", using: key)
+            let streamingXSTS = try await requestXSTS(userToken: sisu.userToken, relyingParty: "http://gssv.xboxlive.com/", using: key)
             let streamInfo = try await requestCloudStreamingToken(xstsToken: streamingXSTS)
             try SecureTokenStore.save(streamInfo.gsToken, account: "xbl.cloud-stream-token")
             cloudTokenExpiry = Date().addingTimeInterval(TimeInterval(streamInfo.durationInSeconds))
@@ -279,8 +279,6 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
         try SecureTokenStore.save(sisu.titleToken, account: "xbl.sisu-title-token")
         try SecureTokenStore.save(sisu.authorizationToken, account: "xbl.sisu-authorization-token")
         let xsts = try await requestXSTS(
-            deviceToken: deviceToken,
-            titleToken: sisu.titleToken,
             userToken: sisu.userToken,
             relyingParty: "http://gssv.xboxlive.com/",
             using: key
@@ -461,19 +459,11 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
         )
     }
 
-    private func requestXSTS(
-        deviceToken: String,
-        titleToken: String,
-        userToken: String,
-        relyingParty: String,
-        using key: XBLProofKey
-    ) async throws -> String {
+    private func requestXSTS(userToken: String, relyingParty: String, using key: XBLProofKey) async throws -> String {
         let url = URL(string: "https://xsts.auth.xboxlive.com/xsts/authorize")!
         let payload: [String: Any] = [
             "Properties": [
                 "SandboxId": Constants.retailSandbox,
-                "DeviceToken": deviceToken,
-                "TitleToken": titleToken,
                 "UserTokens": [userToken]
             ],
             "RelyingParty": relyingParty,
