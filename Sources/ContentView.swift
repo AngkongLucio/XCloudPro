@@ -5,6 +5,7 @@ private enum ConsoleTab: String, CaseIterable, Identifiable {
     case games = "My games"
     case discover = "Discover"
     case settings = "Settings"
+    case account = "Account"
 
     var id: String { rawValue }
     var icon: String {
@@ -13,6 +14,7 @@ private enum ConsoleTab: String, CaseIterable, Identifiable {
         case .games: return "square.grid.2x2.fill"
         case .discover: return "sparkles"
         case .settings: return "gearshape.fill"
+        case .account: return "person.crop.circle.fill"
         }
     }
 }
@@ -52,6 +54,7 @@ struct ContentView: View {
                             case .games: gamesPage
                             case .discover: discoverPage
                             case .settings: settingsPage
+                            case .account: accountPage
                             }
                         }
                         .frame(maxWidth: 1120, alignment: .leading)
@@ -154,8 +157,13 @@ struct ContentView: View {
             }
             .padding(.horizontal, 12).padding(.vertical, 8)
             .background(.white.opacity(0.06), in: Capsule())
-            Image(systemName: "person.crop.circle.fill")
-                .font(.system(size: 27)).foregroundStyle(.white.opacity(0.72)).padding(.leading, 8)
+            Button { selectedTab = .account } label: {
+                Image(systemName: "person.crop.circle.fill")
+                    .font(.system(size: 27)).foregroundStyle(selectedTab == .account ? ConsolePalette.green : .white.opacity(0.72))
+                    .padding(.leading, 8)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Account")
         }
         .padding(.horizontal, 26)
         .frame(height: 66)
@@ -233,6 +241,43 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 20) {
             heading("DISCOVER", subtitle: "Catalog browsing will be enabled after the Xbox service API integration.")
             statusPanel
+        }
+    }
+
+    private var accountPage: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            heading("MICROSOFT ACCOUNT", subtitle: "Use the same Microsoft account you use for Xbox Cloud Gaming in Safari.")
+
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 14) {
+                    Image(systemName: "person.crop.circle.fill")
+                        .font(.system(size: 42)).foregroundStyle(ConsolePalette.green)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Xbox account")
+                            .font(.system(size: 15, weight: .bold))
+                        Text("Not signed in")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(ConsolePalette.muted)
+                    }
+                    Spacer()
+                    Circle().fill(.orange).frame(width: 9, height: 9)
+                }
+
+                Rectangle().fill(.white.opacity(0.08)).frame(height: 1)
+
+                Label("Microsoft sign-in is not connected yet", systemImage: "lock.circle")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.86))
+                Text("The native OAuth, Xbox Sisu, and XAL token flow must be completed before this app can securely show your Xbox profile, subscription, and cloud game library. Your Microsoft password will never be requested or stored by XCloudPro.")
+                    .font(.system(size: 11)).foregroundStyle(ConsolePalette.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(18)
+            .background(ConsolePalette.surface, in: RoundedRectangle(cornerRadius: 18))
+
+            settingsInfo("Account provider", value: "Microsoft / Xbox", icon: "person.badge.key.fill")
+            settingsInfo("Account session", value: "Not connected", icon: "key.horizontal")
+            settingsInfo("Profile and entitlements", value: "Available after sign-in integration", icon: "person.text.rectangle")
         }
     }
 
