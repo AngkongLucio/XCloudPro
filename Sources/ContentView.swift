@@ -34,6 +34,7 @@ struct ContentView: View {
     @State private var selectedTab: ConsoleTab = .home
     @State private var showPlayerStatus = false
     @State private var showAuthenticationError = false
+    @State private var microsoftEmail = ""
     @StateObject private var streamCoordinator = NativeStreamCoordinator()
     @State private var cloudGames: [CloudGame] = []
     @State private var isLoadingGames = false
@@ -393,10 +394,26 @@ struct ContentView: View {
 
                 Rectangle().fill(.white.opacity(0.08)).frame(height: 1)
 
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("MICROSOFT EMAIL")
+                        .font(.system(size: 9, weight: .black)).tracking(1.1)
+                        .foregroundStyle(ConsolePalette.muted)
+                    TextField("name@example.com", text: $microsoftEmail)
+                        .font(.system(size: 14, weight: .medium))
+                        .keyboardType(.emailAddress)
+                        .textContentType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .padding(.horizontal, 13)
+                        .frame(height: 46)
+                        .background(ConsolePalette.elevated, in: RoundedRectangle(cornerRadius: 11))
+                        .disabled(authenticationService.isAuthenticating || authenticationService.account != nil || microsoftEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+
                 Button {
                     Task {
                         do {
-                            try await authenticationService.signIn()
+                            try await authenticationService.signIn(email: microsoftEmail)
                         } catch {
                             showAuthenticationError = true
                         }
@@ -444,7 +461,7 @@ struct ContentView: View {
                     .font(.system(size: 10, weight: .bold))
                     .padding(.top, 2)
                 } else {
-                    Text("A secure Microsoft sign-in window will open. XCloudPro does not ask for or store your Microsoft password.")
+                    Text("Enter your email first. Microsoft will securely ask for your password and any required verification in its official sign-in window. XCloudPro never receives or stores your password.")
                         .font(.system(size: 10)).foregroundStyle(ConsolePalette.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
