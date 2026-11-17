@@ -169,14 +169,10 @@ final class XboxCloudSessionService {
         guard let sessionID = activeSessionID else {
             throw CloudSessionServiceError.missingSessionID
         }
-        let encodedCandidates = try candidates.map { candidate in
-            let data = try JSONEncoder().encode(candidate)
-            guard let value = String(data: data, encoding: .utf8) else {
-                throw CloudSessionServiceError.invalidResponse
-            }
-            return value
-        }
-        let payload = CloudICEPostRequest(iceCandidates: encodedCandidates)
+        let payload = CloudICEPostRequest(
+            messageType: "iceCandidate",
+            candidate: candidates
+        )
         let body = try JSONEncoder().encode(payload)
         let post = makeRequest(
             path: "v5/sessions/cloud/\(sessionID)/ice",
@@ -538,7 +534,8 @@ struct CloudICECandidate: Codable {
 }
 
 private struct CloudICEPostRequest: Encodable {
-    let iceCandidates: [String]
+    let messageType: String
+    let candidate: [CloudICECandidate]
 }
 
 private struct CloudExchangeEnvelope: Decodable {
