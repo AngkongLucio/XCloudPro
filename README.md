@@ -16,16 +16,18 @@ Implemented in this branch:
 - Added persisted local preferences for haptics and network-stat visibility.
 - Kept Bluetooth controller detection through Apple's GameController framework.
 - Added a typed native streaming-client contract and explicit connection states.
+- Added native PKCE, P-256 proof-signing, and Keychain token-storage primitives.
+- Added an Xbox Cloud-only session REST client for provisioning, connect handoff, configuration, keepalive, and stop.
 
 Not yet implemented or verified:
 - Microsoft/Xbox authentication and token lifecycle.
 - Xbox cloud catalog and entitlement APIs.
-- Cloud session negotiation and WebRTC transport.
-- Native video/audio renderer and controller event mapping.
+- End-to-end authentication/token exchange and catalog integration.
+- Native WebRTC SDP/ICE transport, video/audio renderer, and controller event mapping.
 - Functional stream quality controls backed by negotiated session capabilities.
 - Successful device build, installation, and gameplay test on iPad 9th generation.
 
-The dashboard intentionally reports that streaming is not connected. It does not simulate a working stream or display fake game catalog entries.
+The dashboard intentionally reports that streaming is not connected. The cloud session REST client and authentication primitives are not wired into the UI and have not been tested against a live Xbox account. They do not constitute a working stream. The app does not simulate a working stream or display fake game catalog entries.
 
 ## Architecture rules
 - Separate Xbox Cloud Gaming from Xbox console Remote Play; do not claim one protocol supports the other.
