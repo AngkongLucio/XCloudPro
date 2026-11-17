@@ -25,9 +25,18 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
     }()
 
     private var peerConnection: RTCPeerConnection?
+    private var inputDataChannel: RTCDataChannel?
+    private var controlDataChannel: RTCDataChannel?
+    private var inputSequence: UInt32 = 0
     private var localCandidates: [RTCIceCandidate] = []
     private var iceGatheringContinuation: CheckedContinuation<[RTCIceCandidate], Error>?
     private var renderers: [RTCVideoRenderer] = []
+
+    func attachControllerManager(_ manager: ControllerManager) {
+        manager.onGamepadStateChanged = { [weak self] state in
+            self?.sendGamepadState(state)
+        }
+    }
 
     func start(using service: XboxCloudSessionService) async throws {
         guard peerConnection == nil else { return }
@@ -114,11 +123,90 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
     private func closePeerConnection() {
         iceGatheringContinuation?.resume(throwing: CancellationError())
         iceGatheringContinuation = nil
+        inputDataChannel?.delegate = nil
+        controlDataChannel?.delegate = nil
+        inputDataChannel = nil
+        controlDataChannel = nil
         peerConnection?.delegate = nil
         peerConnection?.close()
         peerConnection = nil
         remoteVideoTrack = nil
         localCandidates.removeAll()
+    }
+
+    private func handleOpenedDataChannel(_ channel: RTCDataChannel) {
+        channel.delegate = self
+        switch channel.label.lowercased() {
+        case "input":
+            inputDataChannel = channel
+            sendClientMetadata()
+            sendGamepadState(.neutral)
+        case "controlv1", "control":
+            controlDataChannel = channel
+            sendControlMessage([
+                "type": "StreamerRequest",
+                "command": "hello"
+            ])
+            sendControlMessage([
+                "type": "VideoPreference",
+                "width": 1920,
+                "height": 1080,
+                "fps": 60,
+                "videoCodec": "H264",
+                "colorSpaceFlags": 0
+            ])
+            sendControlMessage([
+                "type": "InputPreference",
+                "maxTouchPoints": 1
+            ])
+            sendControlMessage([
+                "type": "gamepadChanged",
+                "gamepadIndex": 0,
+                "wasAdded": true
+            ])
+        default:
+            break
+        }
+    }
+
+    private func sendControlMessage(_ object: [String: Any]) {
+        guard let channel = controlDataChannel, channel.readyState == .open,
+              let data = try? JSONSerialization.data(withJSONObject: object),
+              let text = String(data: data, encoding: .utf8),
+              let textData = text.data(using: .utf8) else { return }
+        _ = channel.sendData(RTCDataBuffer(data: textData, isBinary: false))
+    }
+
+    private func sendClientMetadata() {
+        guard let channel = inputDataChannel, channel.readyState == .open else { return }
+        var packet = Data()
+        packet.appendLittleEndian(UInt16(8)) // ClientMetadata report
+        packet.appendLittleEndian(inputSequence)
+        packet.appendLittleEndian((ProcessInfo.processInfo.systemUptime * 1_000).bitPattern)
+        packet.append(1) // Maximum simultaneous touch points
+        inputSequence &+= 1
+        _ = channel.sendData(RTCDataBuffer(data: packet, isBinary: true))
+    }
+
+    private func sendGamepadState(_ state: XboxGamepadState) {
+        guard let channel = inputDataChannel, channel.readyState == .open else { return }
+        var packet = Data()
+        packet.appendLittleEndian(UInt16(2)) // Gamepad report
+        packet.appendLittleEndian(inputSequence)
+        packet.appendLittleEndian((ProcessInfo.processInfo.systemUptime * 1_000).bitPattern)
+        packet.append(1) // One gamepad frame
+        packet.append(0) // Primary controller index
+        packet.appendLittleEndian(state.buttons)
+        packet.appendLittleEndian(state.leftX)
+        packet.appendLittleEndian(state.leftY)
+        packet.appendLittleEndian(state.rightX)
+        packet.appendLittleEndian(state.rightY)
+        packet.appendLittleEndian(state.leftTrigger)
+        packet.appendLittleEndian(state.rightTrigger)
+        packet.appendLittleEndian(UInt32(1)) // Physical controller
+        packet.appendLittleEndian(UInt32(1)) // Virtual controller
+        inputSequence &+= 1
+        _ = channel.sendData(RTCDataBuffer(data: packet, isBinary: true))
     }
 
     private func createOffer(
@@ -244,7 +332,9 @@ extension NativeWebRTCTransport: RTCPeerConnectionDelegate {
 
     nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didRemove candidates: [RTCIceCandidate]) {}
 
-    nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didOpen dataChannel: RTCDataChannel) {}
+    nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didOpen dataChannel: RTCDataChannel) {
+        Task { @MainActor in self.handleOpenedDataChannel(dataChannel) }
+    }
 
     nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didStartReceivingOn transceiver: RTCRtpTransceiver) {
         let track = transceiver.receiver.track as? RTCVideoTrack
@@ -279,5 +369,19 @@ struct NativeWebRTCVideoSurface: UIViewRepresentable {
 
     static func dismantleUIView(_ uiView: RTCMTLVideoView, coordinator: Coordinator) {
         coordinator.transport?.detach(renderer: uiView)
+    }
+}
+
+
+extension NativeWebRTCTransport: RTCDataChannelDelegate {
+    nonisolated func dataChannelDidChangeState(_ dataChannel: RTCDataChannel) {}
+
+    nonisolated func dataChannel(_ dataChannel: RTCDataChannel, didReceiveMessageWith buffer: RTCDataBuffer) {}
+}
+
+private extension Data {
+    mutating func appendLittleEndian<T: FixedWidthInteger>(_ value: T) {
+        var littleEndian = value.littleEndian
+        Swift.withUnsafeBytes(of: &littleEndian) { append(contentsOf: $0) }
     }
 }

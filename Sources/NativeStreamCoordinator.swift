@@ -67,6 +67,10 @@ final class NativeStreamCoordinator: ObservableObject {
         }
     }
 
+    func attachControllerManager(_ manager: ControllerManager) {
+        transport.attachControllerManager(manager)
+    }
+
     func stop() async {
         transport.stop()
         if let service {

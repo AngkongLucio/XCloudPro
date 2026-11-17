@@ -78,6 +78,9 @@ struct ContentView: View {
         }
         .background(ConsolePalette.background.ignoresSafeArea())
         .preferredColorScheme(.dark)
+        .onAppear {
+            streamCoordinator.attachControllerManager(controllerManager)
+        }
         .task(id: selectedTab) {
             if selectedTab == .games, authenticationService.account != nil, cloudGames.isEmpty {
                 await loadCloudGames()
