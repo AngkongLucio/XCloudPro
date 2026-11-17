@@ -58,6 +58,14 @@ struct XBLProofKey {
         privateKey = P256.Signing.PrivateKey()
     }
 
+    init(rawRepresentation: Data) throws {
+        privateKey = try P256.Signing.PrivateKey(rawRepresentation: rawRepresentation)
+    }
+
+    var privateKeyRepresentation: Data {
+        privateKey.rawRepresentation
+    }
+
     private var publicCoordinates: Data {
         // P-256 X9.63 representation is 0x04 || X(32 bytes) || Y(32 bytes).
         Data(privateKey.publicKey.rawRepresentation.dropFirst())
