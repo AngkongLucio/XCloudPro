@@ -49,6 +49,7 @@ final class XboxCloudSessionService {
     private let baseURL: URL
     private let gsToken: String
     private let urlSession: URLSession
+    private var keepAliveTask: Task<Void, Never>?
     private(set) var activeSessionID: String?
 
     init(baseURL: URL, gsToken: String, urlSession: URLSession = .shared) throws {
@@ -205,7 +206,27 @@ final class XboxCloudSessionService {
         let _: EmptyResponse = try await send(request)
     }
 
+    func startKeepAlive(pulseIntervalSeconds: Int) {
+        keepAliveTask?.cancel()
+        guard activeSessionID != nil, pulseIntervalSeconds > 0 else { return }
+        let interval = max(15, pulseIntervalSeconds)
+        keepAliveTask = Task { [weak self] in
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(interval) * 1_000_000_000)
+                    guard !Task.isCancelled else { break }
+                    try await self?.sendKeepAlive()
+                } catch {
+                    break
+                }
+            }
+            self?.keepAliveTask = nil
+        }
+    }
+
     func stopCloudGame() async throws {
+        keepAliveTask?.cancel()
+        keepAliveTask = nil
         guard let sessionID = activeSessionID else { return }
         defer { activeSessionID = nil }
         let request = makeRequest(
