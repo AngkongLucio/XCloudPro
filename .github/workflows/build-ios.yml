@@ -5,6 +5,10 @@ on:
   push:
     branches: [main, native-xstreaming-migration]
 
+concurrency:
+  group: xcloudpro-ios-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 

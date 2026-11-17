@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 private enum ConsoleTab: String, CaseIterable, Identifiable {
     case home = "Home"
@@ -123,7 +124,7 @@ struct ContentView: View {
             .padding(.bottom, 38)
 
             ForEach(ConsoleTab.allCases) { tab in
-                Button { selectedTab = tab } label: {
+                Button { selectTab(tab) } label: {
                     HStack(spacing: 14) {
                         Image(systemName: tab.icon).font(.system(size: 17, weight: .semibold)).frame(width: 22)
                         if !compact {
@@ -185,7 +186,7 @@ struct ContentView: View {
             }
             .padding(.horizontal, 12).padding(.vertical, 8)
             .background(.white.opacity(0.06), in: Capsule())
-            Button { selectedTab = .account } label: {
+            Button { selectTab(.account) } label: {
                 Image(systemName: "person.crop.circle.fill")
                     .font(.system(size: 27)).foregroundStyle(selectedTab == .account ? ConsolePalette.green : .white.opacity(0.72))
                     .padding(.leading, 8)
@@ -236,7 +237,7 @@ struct ContentView: View {
                     .minimumScaleFactor(0.7).lineLimit(2)
                 Text("A native Xbox-inspired home for cloud gaming.")
                     .font(.system(size: 13, weight: .medium)).foregroundStyle(.white.opacity(0.68))
-                Button { selectedTab = .games } label: {
+                Button { selectTab(.games) } label: {
                     Label("START PLAYING", systemImage: "play.fill")
                         .font(.system(size: 11, weight: .black)).tracking(1)
                         .foregroundStyle(.black).padding(.horizontal, 21).frame(height: 45)
@@ -451,12 +452,12 @@ struct ContentView: View {
     private var settingsPage: some View {
         VStack(alignment: .leading, spacing: 18) {
             heading("SETTINGS", subtitle: "Native XCloudPro preferences")
-            settingsToggle("Haptic feedback", detail: "Use haptics for supported interface actions", value: $hapticsEnabled, icon: "iphone.radiowaves.left.and.right")
-            settingsToggle("Show network statistics", detail: "Display diagnostics in the player when available", value: $showNetworkStats, icon: "chart.xyaxis.line")
+            settingsToggle("Haptic feedback", detail: "Use a light haptic when changing console sections", value: $hapticsEnabled, icon: "iphone.radiowaves.left.and.right")
+            settingsToggle("Show stream status badge", detail: "Show the connection badge in the native player", value: $showNetworkStats, icon: "chart.xyaxis.line")
             settingsInfo("App version", value: appVersion, icon: "number")
             settingsInfo("Controller", value: controllerManager.statusText, icon: "gamecontroller")
-            settingsInfo("Streaming engine", value: "Native integration in development", icon: "waveform.path")
-            settingsInfo("Gameplay renderer", value: "No web player bundled", icon: "display")
+            settingsInfo("Streaming engine", value: "Xbox Cloud API + native WebRTC", icon: "waveform.path")
+            settingsInfo("Gameplay renderer", value: "Native Metal-backed video surface", icon: "display")
             Text("Resolution, bitrate, codec, and frame-rate controls will be shown only when the native streaming backend exposes and supports them.")
                 .font(.system(size: 11)).foregroundStyle(ConsolePalette.muted)
                 .padding(16).frame(maxWidth: .infinity, alignment: .leading)
@@ -472,13 +473,20 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("NATIVE STREAMING ENGINE")
                     .font(.system(size: 10, weight: .black)).tracking(1.1)
-                Text("Integration in progress — no gameplay stream is active.")
+                Text("Sign in, then open My Games to start a native cloud session.")
                     .font(.system(size: 11)).foregroundStyle(ConsolePalette.muted)
             }
             Spacer(minLength: 0)
             Circle().fill(.orange).frame(width: 8, height: 8)
         }
         .padding(16).background(ConsolePalette.surface, in: RoundedRectangle(cornerRadius: 16))
+    }
+
+    private func selectTab(_ tab: ConsoleTab) {
+        if hapticsEnabled {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
+        selectedTab = tab
     }
 
     private func loadCloudGames() async {

@@ -5,7 +5,7 @@ struct NativePlayerView: View {
     let onExit: () -> Void
 
     @State private var showQuickMenu = false
-    @State private var showStats = true
+    @AppStorage("xcloudpro.showNetworkStats") private var showStats = true
 
     var body: some View {
         ZStack {

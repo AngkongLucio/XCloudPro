@@ -51,3 +51,12 @@ The upstream Geocld/XStreaming `ios` branch LICENSE is MIT. Any code reused from
 
 ## Target and delivery
 Target: iPad 9th generation (iPad12,1), iPadOS 18.1. GitHub Actions unsigned IPA output is not proof of TrollStore compatibility; physical installation and gameplay tests are required.
+
+
+## Native client implementation status
+
+The native branch now includes Microsoft/Xbox sign-in using the public XAL/Sisu flow, Keychain-backed token storage, silent refresh for Microsoft and Xbox Cloud credentials, Xbox-returned cloud region selection, catalog retrieval, cloud session lifecycle calls, WebRTC video transport, and native GameController input over the input data channel.
+
+The stream launch path requests a 1920x1080 / 60 FPS preference. Actual delivered resolution, frame rate, availability of each region, and account entitlement remain controlled by Xbox services. Region selection is limited to regions returned in the Xbox offering response; this client does not claim to bypass Xbox region or subscription restrictions.
+
+Build verification is not the same as live Xbox account validation. The native sign-in and gameplay flow still require a real iPad session before they can be described as end-to-end verified.

@@ -449,13 +449,17 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
         let claims = authorization["DisplayClaims"] as? [String: Any] ?? [:]
         let xui = claims["xui"] as? [[String: Any]] ?? []
         let first = xui.first ?? [:]
+        guard let xboxUserID = first["xid"] as? String, !xboxUserID.isEmpty,
+              let userHash = first["uhs"] as? String, !userHash.isEmpty else {
+            throw XboxAuthenticationError.missingValue("Xbox user ID and user hash")
+        }
         return SisuAuthorization(
             userToken: try string(user, "Token"),
             titleToken: try string(title, "Token"),
             authorizationToken: try string(authorization, "Token"),
             gamertag: (first["mgt"] as? String) ?? (first["gtg"] as? String) ?? "Xbox Player",
-            xboxUserID: (first["xid"] as? String) ?? "",
-            userHash: (first["uhs"] as? String) ?? ""
+            xboxUserID: xboxUserID,
+            userHash: userHash
         )
     }
 
