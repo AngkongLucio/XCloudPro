@@ -18,7 +18,10 @@ XCloudPro has its own Xbox-console-inspired SwiftUI design. Do not copy XStreami
 - Persisted local haptics and network-stat display preferences.
 - Existing Bluetooth controller detection retained.
 - Typed XboxCloudStreamingClient interface and connection-state model.
-- Secure PKCE/state generation, ephemeral P-256 proof-key creation, Xbox request-signature generation, and Keychain token storage primitives.
+- Secure PKCE/state generation, P-256 proof-key creation, Xbox request-signature generation, and Keychain token storage primitives.
+- Native Microsoft/Xbox sign-in flow using ASWebAuthenticationSession, XAL callback handling, PKCE state validation, device-token proof-of-possession, Sisu authorization, XSTS exchange, and Xbox Cloud streaming-token acquisition.
+- Microsoft/XAL callback URL scheme registered in the generated iOS app Info.plist.
+- Native Account screen wired to sign-in status, gamertag/XUID display, cloud-token status, and sign-out.
 - Native Xbox Cloud catalog and recently-played API client, with product-title metadata lookup.
 - Native Xbox Cloud session REST lifecycle for the /v5/sessions/cloud path: create session, poll provisioning, perform the ReadyToConnect handoff through a supplied user-token provider, fetch stream configuration, keepalive, and terminate/cleanup.
 - Native SDP offer and ICE candidate exchange against the cloud session signaling endpoints.
@@ -28,7 +31,7 @@ XCloudPro has its own Xbox-console-inspired SwiftUI design. Do not copy XStreami
 - Play action on the dashboard remains disabled until Microsoft sign-in and session setup are wired.
 
 ## Still required
-- Complete Microsoft OAuth/Sisu/XAL token exchange and refresh flow, including wiring the PKCE and proof-key primitives to real requests.
+- Implement and validate secure refresh/recovery for Microsoft, Sisu, XSTS, and cloud-stream tokens; verify sign-in against a real Xbox account on the target iPad.
 - Wire the catalog client to authenticated account state and populate the dashboard/library UI.
 - Xbox Cloud WebRTC controller-input data channel and Xbox input packet mapping.
 - Validate native audio routing, remote video, ICE behavior, and stream controls against a live Xbox Cloud session.
