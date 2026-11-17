@@ -228,12 +228,12 @@ final class XboxCloudSessionService {
         keepAliveTask?.cancel()
         keepAliveTask = nil
         guard let sessionID = activeSessionID else { return }
-        defer { activeSessionID = nil }
         let request = makeRequest(
             path: "v5/sessions/cloud/\(sessionID)",
             method: "DELETE"
         )
         let _: EmptyResponse = try await send(request)
+        activeSessionID = nil
     }
 
     private func waitUntilProvisioned(
