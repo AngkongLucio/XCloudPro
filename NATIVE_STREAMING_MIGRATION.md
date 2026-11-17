@@ -36,7 +36,7 @@ XCloudPro has its own Xbox-console-inspired SwiftUI design. Do not copy XStreami
 - Only expose stream settings supported by the negotiated session and device.
 
 ## Reference and license
-Use Geocld/XStreaming iOS branch as a technical reference only. Review its current source and license before adapting code. Preserve required upstream copyright/license notices for any reused implementation.
+The upstream Geocld/XStreaming repository currently identifies its license as AGPL-3.0. Do not import or adapt its implementation until the license obligations have been reviewed and an explicit compliance plan is in place. If any AGPL-covered code is reused, preserve notices and comply with applicable source-disclosure and distribution requirements. Prefer an independently implemented client from protocol documentation if that is the intended licensing strategy. The XCloudPro UI must remain original and must not copy XStreaming's visual design.
 
 ## Target and delivery
 Target: iPad 9th generation (iPad12,1), iPadOS 18.1. GitHub Actions unsigned IPA output is not proof of TrollStore compatibility; physical installation and gameplay tests are required.
