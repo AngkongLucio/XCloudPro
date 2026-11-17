@@ -45,7 +45,7 @@ final class XboxCloudCatalogService {
         let response: XboxCloudTitlesResponse = try await send(
             makeRegionRequest(path: "v2/titles", method: "GET")
         )
-        return await mapGames(response.results)
+        return await mapGames(response.results.filter { $0.details?.hasEntitlement == true })
     }
 
     func fetchRecentlyPlayed(limit: Int = 25) async throws -> [CloudGame] {
@@ -70,6 +70,7 @@ final class XboxCloudCatalogService {
             return CloudGame(
                 id: item.titleId,
                 title: metadata[productID]?.productTitle
+                    ?? item.details?.name
                     ?? item.titleId.replacingOccurrences(of: "_", with: " "),
                 artworkURL: artworkURL,
                 supportsCloudPlay: item.details?.hasEntitlement ?? false
@@ -165,6 +166,7 @@ private struct XboxCloudTitle: Decodable {
 
     struct Details: Decodable {
         let productId: String?
+        let name: String?
         let hasEntitlement: Bool?
         let supportedInputTypes: [String]?
         let programs: [String]?
