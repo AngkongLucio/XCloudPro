@@ -190,11 +190,8 @@ final class XboxCloudSessionService {
             if let exchange = try await fetchExchangeResponse(
                 path: "v5/sessions/cloud/\(sessionID)/ice"
             ), let data = exchange.data(using: .utf8) {
-                if let array = try? JSONDecoder().decode([CloudICECandidate].self, from: data) {
-                    return array
-                }
-                if let dictionary = try? JSONDecoder().decode([String: CloudICECandidate].self, from: data) {
-                    return dictionary.keys.sorted().compactMap { dictionary[$0] }
+                if let candidates = try decodeICECandidates(from: data) {
+                    return candidates
                 }
                 throw CloudSessionServiceError.invalidResponse
             }
@@ -310,6 +307,52 @@ final class XboxCloudSessionService {
             return nil
         }
         throw CloudSessionServiceError.invalidResponse
+    }
+
+    private func decodeICECandidates(from data: Data) throws -> [CloudICECandidate]? {
+        let root = try JSONSerialization.jsonObject(with: data)
+
+        func decodeCandidate(_ value: Any) -> CloudICECandidate? {
+            let candidateData: Data?
+            if let dictionary = value as? [String: Any],
+               JSONSerialization.isValidJSONObject(dictionary) {
+                candidateData = try? JSONSerialization.data(withJSONObject: dictionary)
+            } else if let text = value as? String {
+                candidateData = text.data(using: .utf8)
+            } else {
+                candidateData = nil
+            }
+            guard let candidateData else { return nil }
+            return try? JSONDecoder().decode(CloudICECandidate.self, from: candidateData)
+        }
+
+        func unwrap(_ value: Any) -> [CloudICECandidate]? {
+            if let text = value as? String, let nested = text.data(using: .utf8) {
+                return try? decodeICECandidates(from: nested)
+            }
+            if let array = value as? [Any] {
+                let decoded = array.compactMap(decodeCandidate)
+                return decoded.count == array.count ? decoded : nil
+            }
+            if let dictionary = value as? [String: Any] {
+                for key in ["exchangeResponse", "iceCandidates", "candidates"] {
+                    if let nested = dictionary[key], let result = unwrap(nested) {
+                        return result
+                    }
+                }
+                if let single = decodeCandidate(dictionary) {
+                    return [single]
+                }
+                let values = dictionary.keys.sorted().compactMap { dictionary[$0] }
+                if !values.isEmpty {
+                    let decoded = values.compactMap(decodeCandidate)
+                    return decoded.count == values.count ? decoded : nil
+                }
+            }
+            return nil
+        }
+
+        return unwrap(root)
     }
 
     private func fetchConfiguration(sessionID: String) async throws -> CloudSessionConfiguration {
