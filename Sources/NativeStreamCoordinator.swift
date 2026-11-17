@@ -9,7 +9,6 @@ final class NativeStreamCoordinator: ObservableObject {
 
     let transport: NativeWebRTCTransport
     private var service: XboxCloudSessionService?
-    private var keepAliveTask: Task<Void, Never>?
 
     init(transport: NativeWebRTCTransport = NativeWebRTCTransport()) {
         self.transport = transport
@@ -73,8 +72,6 @@ final class NativeStreamCoordinator: ObservableObject {
     }
 
     func stop() async {
-        keepAliveTask?.cancel()
-        keepAliveTask = nil
         transport.stop()
         if let service {
             try? await service.stopCloudGame()
