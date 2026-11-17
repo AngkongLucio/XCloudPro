@@ -6,8 +6,10 @@ on:
     branches: [main, native-xstreaming-migration]
 
 concurrency:
-  group: xcloudpro-ios-${{ github.ref }}-${{ github.sha }}
-  cancel-in-progress: true
+  # Give every workflow execution its own concurrency group so GitHub never
+  # cancels an in-progress or pending build because another commit was pushed.
+  group: xcloudpro-ios-${{ github.ref }}-${{ github.run_id }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
