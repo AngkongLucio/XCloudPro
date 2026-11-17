@@ -63,15 +63,15 @@ final class XboxCloudCatalogService {
 
         return titles.map { item in
             let productID = item.details?.productId ?? item.titleId
+            let artworkURL = (
+                metadata[productID]?.imageHero?.url
+                    ?? metadata[productID]?.imageTile?.url
+            ).flatMap(URL.init(string:))
             return CloudGame(
                 id: item.titleId,
                 title: metadata[productID]?.productTitle
                     ?? item.titleId.replacingOccurrences(of: "_", with: " "),
-                artworkURL: URL(
-                    string: metadata[productID]?.imageHero?.url
-                        ?? metadata[productID]?.imageTile?.url
-                        ?? ""
-                ),
+                artworkURL: artworkURL,
                 supportsCloudPlay: item.details?.hasEntitlement ?? false
             )
         }
