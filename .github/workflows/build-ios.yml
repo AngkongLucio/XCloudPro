@@ -14,24 +14,37 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Install XcodeGen
         run: brew install xcodegen
+
       - name: Generate Xcode project
         run: xcodegen generate
+
       - name: Build unsigned app
+        env:
+          APP_VERSION: "1.0.0"
+          BUILD_NUMBER: ${{ github.run_number }}
         run: |
-          xcodebuild -project XCloudPro.xcodeproj -scheme XCloudPro -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData CODE_SIGNING_ALLOWED=NO build
-      - name: Package unsigned IPA
+          xcodebuild -project XCloudPro.xcodeproj -scheme XCloudPro -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData MARKETING_VERSION="$APP_VERSION" CURRENT_PROJECT_VERSION="$BUILD_NUMBER" CODE_SIGNING_ALLOWED=NO build
+
+      - name: Package versioned unsigned IPA
+        env:
+          APP_VERSION: "1.0.0"
+          BUILD_NUMBER: ${{ github.run_number }}
         run: |
           APP_PATH="build/DerivedData/Build/Products/Release-iphoneos/XCloudPro.app"
           test -d "$APP_PATH"
           mkdir -p build/Payload
           cp -R "$APP_PATH" build/Payload/
           cd build
-          /usr/bin/zip -r XCloudPro-unsigned.ipa Payload
-      - name: Upload IPA artifact
+          IPA_NAME="XCloudPro-v${APP_VERSION}-build${BUILD_NUMBER}-unsigned.ipa"
+          /usr/bin/zip -r "$IPA_NAME" Payload
+          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+
+      - name: Upload versioned IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: XCloudPro-unsigned-IPA
-          path: build/XCloudPro-unsigned.ipa
+          name: XCloudPro-v1.0.0-build${{ github.run_number }}
+          path: build/XCloudPro-v1.0.0-build${{ github.run_number }}-unsigned.ipa
           if-no-files-found: error
