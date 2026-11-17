@@ -69,7 +69,7 @@ final class XboxCloudSessionService {
     /// is called only when the service reports ReadyToConnect.
     func startCloudGame(
         titleID: String,
-        locale: String = Locale.current.identifier,
+        locale: String = "en-US",
         timezoneOffsetMinutes: Int = TimeZone.current.secondsFromGMT() / 60,
         osName: String,
         deviceInfoHeader: String,
