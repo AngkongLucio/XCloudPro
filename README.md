@@ -1,40 +1,40 @@
-# XCloud Pro
+# XCloudPro
 
-An iPad-first SwiftUI launcher for Xbox Cloud Gaming with an experimental bundled Better xCloud integration.
+XCloudPro is being rebuilt as a standalone iPad-first Xbox cloud streaming client with an original Xbox-console-inspired SwiftUI interface.
 
-## Features
-- Opens Xbox Cloud Gaming in a native WKWebView container.
-- Bundles the official Better xCloud userscript and injects it at document start.
-- Bundles the supplied play.xbox.com opt-out redirect helper.
-- Shows connected Bluetooth controller names using Apple's GameController framework.
-- GitHub Actions workflow builds an unsigned iOS IPA on a hosted macOS runner.
+## Product direction
+- Original Xbox-console dashboard: dark graphite UI, restrained Xbox green, featured hero, game-library rails, controller-friendly navigation.
+- Native SwiftUI app shell and settings.
+- Native gameplay renderer and streaming transport; no Xbox gameplay webpage in WKWebView.
+- XStreaming is a technical reference only. Do not copy its UI or branding.
+- No Better xCloud userscript, userscript manager, or injected page scripts in the target architecture.
 
-## Better xCloud settings
-Open the player using **PLAY NOW** and wait for Xbox Cloud Gaming to load. If the userscript initializes successfully, its own Better xCloud button/settings entry should appear in the Xbox page UI near the profile/server controls. These are the upstream Better xCloud settings, not a separate native XCloud Pro settings screen.
+## Current migration status
+Implemented in this branch:
+- Replaced the old browser-launch dashboard with an original Xbox-inspired native SwiftUI dashboard.
+- Added Home, My games, Discover, and Settings navigation.
+- Added persisted local preferences for haptics and network-stat visibility.
+- Kept Bluetooth controller detection through Apple's GameController framework.
+- Added a typed native streaming-client contract and explicit connection states.
 
-The bundled userscript is sourced from the official redphx/better-xcloud repository (MIT license). Its integration into this app's WKWebView is experimental and has not yet been tested on a physical iPad. Upstream documents iOS/iPadOS support through Safari + the Userscripts extension; a custom WKWebView is a different environment and may behave differently.
+Not yet implemented or verified:
+- Microsoft/Xbox authentication and token lifecycle.
+- Xbox cloud catalog and entitlement APIs.
+- Cloud session negotiation and WebRTC transport.
+- Native video/audio renderer and controller event mapping.
+- Functional stream quality controls backed by negotiated session capabilities.
+- Successful device build, installation, and gameplay test on iPad 9th generation.
 
-## Build with GitHub Actions
-1. Open the Actions tab in this repository.
-2. Select Build iOS IPA.
-3. Choose Run workflow.
-4. Wait for the workflow to finish.
-5. Download the XCloudPro-unsigned-IPA artifact from the successful run.
+The dashboard intentionally reports that streaming is not connected. It does not simulate a working stream or display fake game catalog entries.
 
-## Local build
-Requires macOS, Xcode, Homebrew, and XcodeGen.
+## Architecture rules
+- Separate Xbox Cloud Gaming from Xbox console Remote Play; do not claim one protocol supports the other.
+- Use supported Microsoft sign-in flows; never collect or store raw Microsoft passwords.
+- Keep credentials and tokens out of source control and app logs.
+- Expose resolution, frame-rate, codec, and bitrate controls only when the negotiated stream and target device support them.
+- Keep main stable; develop on native-xstreaming-migration.
 
-    brew install xcodegen
-    xcodegen generate
-    xcodebuild -project XCloudPro.xcodeproj -scheme XCloudPro -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO build
+## Build
+The repository uses XcodeGen and a macOS GitHub Actions runner to create an unsigned IPA. A successful workflow build and physical iPad test are required before calling an IPA installable or functional.
 
-## Important limitations
-- This is a launcher/browser wrapper. Xbox account authentication, subscriptions, game availability, stream resolution, bitrate, frame rate, and network latency are controlled by Xbox and the network.
-- It does not force 2K/4K, unlock FPS, or guarantee zero input delay.
-- Detecting a controller in the app does not guarantee every controller will be accepted by the Xbox web player.
-- Better xCloud settings only appear if the upstream script initializes successfully on the Xbox website. Some Safari-specific or extension-dependent behavior may not work in WKWebView.
-- The opt-out helper only redirects the legacy play.xbox.com host to www.xbox.com/play; it is not the Better xCloud settings interface.
-- The workflow creates an unsigned IPA. TrollStore installation compatibility must be tested on the target device; it is not represented as tested.
-
-## Target
-iPadOS 16 or later. Intended test device: iPad (9th generation), iPadOS 18.1.
+Target test device: iPad (9th generation), iPadOS 18.1.
