@@ -3,6 +3,10 @@ options:
   bundleIdPrefix: com.angkonglucio
   deploymentTarget:
     iOS: "16.0"
+packages:
+  WebRTC:
+    url: https://github.com/stasel/WebRTC.git
+    from: 157.0.0
 settings:
   base:
     SWIFT_VERSION: "5.9"
@@ -18,6 +22,8 @@ targets:
     platform: iOS
     sources:
       - path: Sources
+    dependencies:
+      - package: WebRTC
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.angkonglucio.xcloudpro
