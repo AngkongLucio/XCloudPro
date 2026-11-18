@@ -307,6 +307,72 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
         return (gsToken, region)
     }
 
+    /// Produces the distinct credentials required for Xbox Console Remote Play.
+    /// The web token is used only for registered-console discovery; the xhome GS
+    /// token is used only for /sessions/home signaling.
+    func consoleRemotePlayCredentials() async throws -> XboxConsoleRemotePlayCredentials {
+        let cloudToken = try SecureTokenStore.load(account: "xbl.cloud-stream-token")
+        let tokenIsFresh = (cloudTokenExpiry ?? .distantPast).timeIntervalSinceNow > 120
+        if cloudToken == nil || !tokenIsFresh {
+            try await refreshCloudCredentials()
+        }
+
+        guard let sisuUserToken = try SecureTokenStore.load(account: "xbl.sisu-user-token"),
+              let userHash = account?.userHash,
+              let rawKey = try SecureTokenStore.load(account: "xbl.proof-key"),
+              let keyData = Data(base64Encoded: rawKey) else {
+            throw XboxAuthenticationError.missingValue("Xbox Sisu credentials; sign in again")
+        }
+        let key = try XBLProofKey(rawRepresentation: keyData)
+        let webXSTS = try await requestXSTS(
+            userToken: sisuUserToken,
+            relyingParty: "http://xboxlive.com",
+            using: key
+        )
+        let homeXSTS = try await requestXSTS(
+            userToken: sisuUserToken,
+            relyingParty: "http://gssv.xboxlive.com/",
+            using: key
+        )
+        let homeInfo = try await requestHomeStreamingToken(xstsToken: homeXSTS)
+        return XboxConsoleRemotePlayCredentials(
+            webToken: webXSTS,
+            homeGSToken: homeInfo.gsToken,
+            regions: homeInfo.regions,
+            userHash: userHash
+        )
+    }
+
+    private func requestHomeStreamingToken(xstsToken: String) async throws -> CloudStreamingToken {
+        let url = URL(string: "https://xhome.gssv-play-prod.xboxlive.com/v2/login/user")!
+        let payload: [String: Any] = ["token": xstsToken, "offeringId": "xhome"]
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("no-store, must-revalidate, no-cache", forHTTPHeaderField: "Cache-Control")
+        request.setValue("XboxComBrowser", forHTTPHeaderField: "x-gssv-client")
+        let object = try jsonObject(await perform(request))
+        let settings = object["offeringSettings"] as? [String: Any] ?? [:]
+        let regionObjects = settings["regions"] as? [[String: Any]] ?? []
+        let regions = regionObjects.compactMap { item -> XboxCloudRegion? in
+            guard let name = item["name"] as? String,
+                  let rawBaseURI = item["baseUri"] as? String,
+                  let baseURI = URL(string: rawBaseURI),
+                  baseURI.scheme?.lowercased() == "https",
+                  baseURI.host != nil else { return nil }
+            return XboxCloudRegion(name: name, baseURI: baseURI, isDefault: item["isDefault"] as? Bool ?? false)
+        }
+        guard !regions.isEmpty else {
+            throw XboxAuthenticationError.missingValue("available Xbox home-streaming regions")
+        }
+        return CloudStreamingToken(
+            gsToken: try string(object, "gsToken"),
+            regions: regions,
+            durationInSeconds: object["durationInSeconds"] as? Int ?? 14_400
+        )
+    }
+
     /// Xbox Cloud's /connect endpoint expects the Passport console-transfer token,
     /// not the ordinary Microsoft account access token.
     func cloudTransferToken() async throws -> String {
@@ -771,6 +837,13 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
         components.queryItems = values.keys.sorted().map { URLQueryItem(name: $0, value: values[$0]) }
         return components.percentEncodedQuery ?? ""
     }
+}
+
+struct XboxConsoleRemotePlayCredentials {
+    let webToken: String
+    let homeGSToken: String
+    let regions: [XboxCloudRegion]
+    let userHash: String
 }
 
 private struct UserOAuthToken {
