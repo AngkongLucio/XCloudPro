@@ -244,10 +244,18 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
     }
 
     private func restoreSavedProfile() {
+        // A cached gamertag alone is not proof of an authenticated Xbox session.
+        // Restore the signed-in state only when the native XAL refresh credential,
+        // proof key and a cloud token are present; cloudSessionCredentials() will
+        // refresh an expired cloud token before streaming starts.
         guard
             let gamertag = try? SecureTokenStore.load(account: "xbl.profile-gamertag"),
             let xuid = try? SecureTokenStore.load(account: "xbl.profile-xuid"),
-            let userHash = try? SecureTokenStore.load(account: "xbl.profile-user-hash")
+            let userHash = try? SecureTokenStore.load(account: "xbl.profile-user-hash"),
+            let refreshToken = try? SecureTokenStore.load(account: "xbl.user-refresh-token"),
+            let proofKey = try? SecureTokenStore.load(account: "xbl.proof-key"),
+            !refreshToken.isEmpty,
+            !proofKey.isEmpty
         else { return }
         account = XboxAccountProfile(id: xuid, gamertag: gamertag, userHash: userHash)
         if let raw = try? SecureTokenStore.load(account: "xbl.cloud-regions"),
@@ -567,11 +575,12 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
         using key: XBLProofKey
     ) async throws -> String {
         let url = URL(string: "https://xsts.auth.xboxlive.com/xsts/authorize")!
+        // Match the current XStreaming iOS XSTS request exactly.
+        // The current implementation sends only SandboxId + UserTokens;
+        // DeviceToken and TitleToken are not part of this request.
         let payload: [String: Any] = [
             "Properties": [
                 "SandboxId": Constants.retailSandbox,
-                "DeviceToken": deviceToken,
-                "TitleToken": titleToken,
                 "UserTokens": [userToken]
             ],
             "RelyingParty": relyingParty,
