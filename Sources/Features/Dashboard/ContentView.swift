@@ -4,6 +4,7 @@ import UIKit
 private enum ConsoleTab: String, CaseIterable, Identifiable {
     case home = "Home"
     case games = "My games"
+    case console = "Console Remote Play"
     case discover = "Discover"
     case settings = "Settings"
     case account = "Account"
@@ -13,6 +14,7 @@ private enum ConsoleTab: String, CaseIterable, Identifiable {
         switch self {
         case .home: return "house.fill"
         case .games: return "square.grid.2x2.fill"
+        case .console: return "tv.and.hifispeaker.fill"
         case .discover: return "sparkles"
         case .settings: return "gearshape.fill"
         case .account: return "person.crop.circle.fill"
@@ -65,6 +67,7 @@ struct ContentView: View {
                             switch selectedTab {
                             case .home: homePage
                             case .games: gamesPage
+                            case .console: consolePage
                             case .discover: discoverPage
                             case .settings: settingsPage
                             case .account: accountPage
@@ -90,6 +93,9 @@ struct ContentView: View {
         .task(id: selectedTab) {
             if selectedTab == .games, authenticationService.account != nil, appModel.cloudGames.isEmpty {
                 await loadCloudGames()
+            }
+            if selectedTab == .console, authenticationService.account != nil, appModel.consoles.isEmpty {
+                await appModel.loadConsoles()
             }
         }
         .fullScreenCover(isPresented: $showStreamPlayer) {
@@ -338,6 +344,7 @@ struct ContentView: View {
             }
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
                 actionTile("My games", detail: "Your cloud game library", icon: "square.grid.2x2.fill", tint: ConsolePalette.green) { selectedTab = .games }
+                actionTile("Console Remote Play", detail: "Stream your Xbox One or Series console", icon: "tv.and.hifispeaker.fill", tint: .cyan) { selectedTab = .console }
                 actionTile("Discover", detail: "Explore available games", icon: "sparkles", tint: .cyan) { selectedTab = .discover }
                 actionTile("Controller", detail: controllerManager.statusText, icon: "gamecontroller.fill", tint: .orange) { selectedTab = .settings }
                 actionTile("Settings", detail: "Console preferences", icon: "slider.horizontal.3", tint: .purple) { selectedTab = .settings }
@@ -472,6 +479,94 @@ struct ContentView: View {
                         .tint(ConsolePalette.green)
                 }
             }
+        }
+    }
+
+    private var consolePage: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            heading("XBOX CONSOLE REMOTE PLAY", subtitle: "Stream a registered Xbox One or Xbox Series S/X console to this iPad")
+            HStack {
+                Label("Xbox Home Streaming", systemImage: "antenna.radiowaves.left.and.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(ConsolePalette.muted)
+                Spacer()
+                Button {
+                    Task { await appModel.loadConsoles() }
+                } label: {
+                    Label(appModel.isLoadingConsoles ? "LOADING…" : "REFRESH", systemImage: "arrow.clockwise")
+                        .font(.system(size: 10, weight: .black))
+                        .foregroundStyle(ConsolePalette.green)
+                }
+                .disabled(appModel.isLoadingConsoles || appModel.isStartingGame)
+            }
+            if appModel.isLoadingConsoles {
+                ProgressView("Finding consoles registered to your Xbox account…")
+                    .tint(ConsolePalette.green)
+                    .frame(maxWidth: .infinity).padding(30)
+            } else if let error = appModel.gamesError, appModel.consoles.isEmpty {
+                Text(error)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.orange)
+                    .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(ConsolePalette.surface, in: RoundedRectangle(cornerRadius: 14))
+                Button("TRY AGAIN") { Task { await appModel.loadConsoles() } }
+                    .font(.system(size: 10, weight: .black))
+            } else if appModel.consoles.isEmpty {
+                Text("Tap Refresh to discover Xbox consoles registered to this Microsoft account.")
+                    .font(.system(size: 11)).foregroundStyle(ConsolePalette.muted)
+                    .padding(20).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(ConsolePalette.surface, in: RoundedRectangle(cornerRadius: 14))
+            } else {
+                ForEach(appModel.consoles) { console in
+                    Button {
+                        Task {
+                            await appModel.startConsoleRemotePlay(
+                                console,
+                                targetResolution: targetResolution,
+                                preferredFPS: preferredFPS
+                            )
+                            if appModel.streamCoordinator.lastError == nil {
+                                showStreamPlayer = true
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 14) {
+                            Image(systemName: "xbox.logo")
+                                .font(.system(size: 28, weight: .bold))
+                                .foregroundStyle(ConsolePalette.green)
+                                .frame(width: 48, height: 48)
+                                .background(ConsolePalette.green.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(console.displayName)
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundStyle(.white)
+                                Text(console.consoleType ?? "Xbox console")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundStyle(ConsolePalette.muted)
+                                Text(console.powerState ?? "Power state unavailable")
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .foregroundStyle(ConsolePalette.green)
+                            }
+                            Spacer()
+                            if appModel.isStartingGame {
+                                ProgressView().tint(ConsolePalette.green)
+                            } else {
+                                Image(systemName: "play.fill").foregroundStyle(ConsolePalette.green)
+                            }
+                        }
+                        .padding(15)
+                        .background(ConsolePalette.surface, in: RoundedRectangle(cornerRadius: 15))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(appModel.isStartingGame)
+                }
+            }
+            Text("Console must be registered to this Xbox account and configured for Remote features. Network reachability and console power state are controlled by Xbox.")
+                .font(.system(size: 10))
+                .foregroundStyle(ConsolePalette.muted)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(14)
+                .background(ConsolePalette.surface, in: RoundedRectangle(cornerRadius: 12))
         }
     }
 
