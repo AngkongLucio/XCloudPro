@@ -157,7 +157,7 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
 
             let pkce = try PKCEChallenge.make()
             statusMessage = "Connecting to Microsoft…"
-            let (authorizationURL, sessionID) = try await beginSisuAuthentication(
+            let authorizationURL = try await beginSisuAuthentication(
                 deviceToken: deviceToken,
                 challenge: pkce
             )
@@ -184,7 +184,7 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
                 userAccessToken: userToken.accessToken,
                 deviceToken: deviceToken,
                 using: key,
-                sessionID: sessionID
+                sessionID: nil
             )
             try SecureTokenStore.save(sisu.userToken, account: "xbl.sisu-user-token")
             try SecureTokenStore.save(sisu.titleToken, account: "xbl.sisu-title-token")
@@ -475,7 +475,7 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
         throw XboxAuthenticationError.invalidResponse
     }
 
-    private func beginSisuAuthentication(deviceToken: String, challenge: PKCEChallenge) async throws -> (URL, String?) {
+    private func beginSisuAuthentication(deviceToken: String, challenge: PKCEChallenge) async throws -> URL {
         let url = URL(string: "https://sisu.xboxlive.com/authenticate")!
         let payload: [String: Any] = [
             "AppId": Constants.appID,
@@ -492,15 +492,14 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
                 "state": challenge.state
             ]
         ]
-        let (data, response) = try await signedJSONRequestWithResponse(url: url, payload: payload, using: proofKey!)
+        let data = try await signedJSONRequest(url: url, payload: payload, using: proofKey!)
         let object = try jsonObject(data)
         guard let nested = object["data"] as? [String: Any],
               let redirect = nested["MsaOauthRedirect"] as? String,
               let authorizationURL = URL(string: redirect) else {
             throw XboxAuthenticationError.missingValue("Microsoft authorization URL")
         }
-        let sessionID = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "x-sessionid")
-        return (authorizationURL, sessionID)
+        return authorizationURL
     }
 
     private func exchangeAuthorizationCode(_ code: String, verifier: String) async throws -> UserOAuthToken {
