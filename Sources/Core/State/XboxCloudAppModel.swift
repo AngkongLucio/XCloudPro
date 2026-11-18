@@ -10,6 +10,8 @@ final class XboxCloudAppModel: ObservableObject {
     @Published private(set) var isStartingGame = false
     @Published private(set) var gamesError: String?
     @Published private(set) var activeGame: CloudGame?
+    @Published private(set) var consoles: [XboxConsoleDevice] = []
+    @Published private(set) var isLoadingConsoles = false
 
     let streamCoordinator: NativeStreamCoordinator
 
@@ -76,6 +78,66 @@ final class XboxCloudAppModel: ObservableObject {
                 msalUserTokenProvider: { [authenticationService] in
                     try await authenticationService.cloudTransferToken()
                 }
+            )
+            if let error = streamCoordinator.lastError {
+                gamesError = error
+            }
+        } catch {
+            gamesError = error.localizedDescription
+        }
+    }
+
+    func loadConsoles() async {
+        guard authenticationService.account != nil, !isLoadingConsoles else { return }
+        isLoadingConsoles = true
+        gamesError = nil
+        defer { isLoadingConsoles = false }
+        do {
+            let credentials = try await authenticationService.consoleRemotePlayCredentials()
+            guard let region = credentials.regions.first(where: { $0.isDefault }) ?? credentials.regions.first else {
+                throw XboxAuthenticationError.missingValue("Xbox home-streaming region")
+            }
+            let service = try XboxConsoleRemotePlayService(
+                baseURL: region.baseURI,
+                homeGSToken: credentials.homeGSToken,
+                webToken: credentials.webToken,
+                userHash: credentials.userHash
+            )
+            consoles = try await service.fetchConsoles()
+            if consoles.isEmpty {
+                gamesError = "No Xbox consoles are registered to this Microsoft account."
+            }
+        } catch {
+            gamesError = error.localizedDescription
+        }
+    }
+
+    func startConsoleRemotePlay(
+        _ console: XboxConsoleDevice,
+        targetResolution: String,
+        preferredFPS: String
+    ) async {
+        guard !isStartingGame, authenticationService.account != nil else { return }
+        isStartingGame = true
+        gamesError = nil
+        defer { isStartingGame = false }
+        do {
+            let credentials = try await authenticationService.consoleRemotePlayCredentials()
+            guard let region = credentials.regions.first(where: { $0.isDefault }) ?? credentials.regions.first else {
+                throw XboxAuthenticationError.missingValue("Xbox home-streaming region")
+            }
+            let service = try XboxConsoleRemotePlayService(
+                baseURL: region.baseURI,
+                homeGSToken: credentials.homeGSToken,
+                webToken: credentials.webToken,
+                userHash: credentials.userHash
+            )
+            await streamCoordinator.startConsoleRemotePlay(
+                using: service,
+                consoleID: console.id,
+                videoWidth: targetResolution == "720p" ? 1280 : 1920,
+                videoHeight: targetResolution == "720p" ? 720 : 1080,
+                maxFPS: Int(preferredFPS) ?? 60
             )
             if let error = streamCoordinator.lastError {
                 gamesError = error
