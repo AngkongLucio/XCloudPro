@@ -171,7 +171,7 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
 
             statusMessage = "Requesting Xbox Cloud credentials…"
             let web = try await requestMSALXSTS(userToken: xboxUserToken, relyingParty: "http://xboxlive.com")
-            let home = try await requestMSALXSTS(userToken: xboxUserToken, relyingParty: "http://gssv.xboxlive.com/")
+            let home = try await requestMSALXSTS(userToken: xboxUserToken, relyingParty: "http://gssv.xboxlive.com/", requiresProfileClaims: false)
             let cloudInfo = try await requestCloudStreamingToken(xstsToken: home.token)
             let homeInfo = try await requestHomeStreamingToken(xstsToken: home.token)
             let homeRegionData = try JSONEncoder().encode(homeInfo.regions)
@@ -312,7 +312,7 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
         return try requiredString(await perform(request), path: ["Token"])
     }
 
-    private func requestMSALXSTS(userToken: String, relyingParty: String) async throws -> MSALXSTSResult {
+    private func requestMSALXSTS(userToken: String, relyingParty: String, requiresProfileClaims: Bool = true) async throws -> MSALXSTSResult {
         let url = URL(string: "https://xsts.auth.xboxlive.com/xsts/authorize")!
         let payload: [String: Any] = [
             "Properties": ["SandboxId": "RETAIL", "UserTokens": [userToken]],
@@ -331,9 +331,12 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
         let claims = object["DisplayClaims"] as? [String: Any] ?? [:]
         let xui = claims["xui"] as? [[String: Any]] ?? []
         guard let first = xui.first,
-              let xuid = first["xid"] as? String, !xuid.isEmpty,
               let userHash = first["uhs"] as? String, !userHash.isEmpty else {
-            throw XboxAuthenticationError.missingValue("Xbox profile claims")
+            throw XboxAuthenticationError.missingValue("Xbox user-hash claim (DisplayClaims.xui[0].uhs)")
+        }
+        let xuid = (first["xid"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? ""
+        if requiresProfileClaims && xuid.isEmpty {
+            throw XboxAuthenticationError.missingValue("Xbox profile XUID claim (DisplayClaims.xui[0].xid)")
         }
         return MSALXSTSResult(
             token: try string(object, "Token"),
