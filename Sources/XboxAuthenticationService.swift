@@ -374,24 +374,46 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
 
     private func requestDeviceToken(using key: XBLProofKey) async throws -> String {
         let url = URL(string: "https://device.auth.xboxlive.com/device/authenticate")!
-        let deviceID = UUID().uuidString.uppercased()
-        let payload: [String: Any] = [
-            "Properties": [
-                "AuthMethod": "ProofOfPossession",
-                "Id": "{\(deviceID)}",
-                "DeviceType": "Android",
-                "SerialNumber": "{\(UUID().uuidString.uppercased())}",
-                "Version": "15.0",
-                "ProofKey": [
-                    "use": "sig", "alg": "ES256", "kty": "EC", "crv": "P-256",
-                    "x": key.jwkX, "y": key.jwkY
-                ]
-            ],
-            "RelyingParty": "http://auth.xboxlive.com",
-            "TokenType": "JWT"
-        ]
-        let data = try await signedJSONRequest(url: url, payload: payload, using: key)
-        return try requiredString(data, path: ["Token"])
+
+        // A single bounded retry is allowed for HTTP 500 only. Rebuild the
+        // device identifiers and proof signature so the second request is fresh.
+        for attempt in 1...2 {
+            let deviceID = UUID().uuidString.uppercased()
+            let serialNumber = UUID().uuidString.uppercased()
+            let payload: [String: Any] = [
+                "Properties": [
+                    "AuthMethod": "ProofOfPossession",
+                    "Id": "{\(deviceID)}",
+                    "DeviceType": "Android",
+                    "SerialNumber": "{\(serialNumber)}",
+                    "Version": "15.0",
+                    "ProofKey": [
+                        "use": "sig", "alg": "ES256", "kty": "EC", "crv": "P-256",
+                        "x": key.jwkX, "y": key.jwkY
+                    ]
+                ],
+                "RelyingParty": "http://auth.xboxlive.com",
+                "TokenType": "JWT"
+            ]
+
+            do {
+                let data = try await signedJSONRequest(url: url, payload: payload, using: key)
+                return try requiredString(data, path: ["Token"])
+            } catch let error as XboxAuthenticationError {
+                guard case .serverRejected(let statusCode, let details) = error else {
+                    throw error
+                }
+                if statusCode == 500 && attempt == 1 {
+                    continue
+                }
+                throw XboxAuthenticationError.serverRejected(
+                    statusCode,
+                    "device-auth attempt \(attempt)/2 | \(details)"
+                )
+            }
+        }
+
+        throw XboxAuthenticationError.invalidResponse
     }
 
     private func beginSisuAuthentication(deviceToken: String, challenge: PKCEChallenge) async throws -> (URL, String?) {
@@ -588,6 +610,25 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
             if let serviceMessage { details.append("service: " + String(serviceMessage.prefix(240))) }
             if let serviceErrorHeader { details.append("Xbox error: " + String(serviceErrorHeader.prefix(80))) }
             if let requestID { details.append("request ID: " + String(requestID.prefix(100))) }
+
+            // Device-auth diagnostics are limited to non-secret transport metadata.
+            if endpoint == "device.auth.xboxlive.com/device/authenticate" {
+                let method = request.httpMethod ?? "unknown"
+                let contentType = request.value(forHTTPHeaderField: "Content-Type") ?? "unset"
+                let bodySize = request.httpBody?.count ?? 0
+                let hasSignature = request.value(forHTTPHeaderField: "Signature") != nil
+                let contractVersion = request.value(forHTTPHeaderField: "x-xbl-contract-version") ?? "unset"
+                details.append("request: method=\(method), content-type=\(contentType), body-bytes=\(bodySize), signature-present=\(hasSignature), contract=\(contractVersion)")
+                if let responseType = http.value(forHTTPHeaderField: "Content-Type") {
+                    details.append("response-content-type: " + String(responseType.prefix(100)))
+                }
+                if let server = http.value(forHTTPHeaderField: "Server") {
+                    details.append("server: " + String(server.prefix(80)))
+                }
+                if let date = http.value(forHTTPHeaderField: "Date") {
+                    details.append("server-date: " + String(date.prefix(80)))
+                }
+            }
             if details.count == 1 { details.append("The Xbox service rejected the request without a readable error code.") }
             throw XboxAuthenticationError.serverRejected(http.statusCode, details.joined(separator: " | "))
         }
