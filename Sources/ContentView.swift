@@ -103,6 +103,13 @@ struct ContentView: View {
                 activeGame = nil
             }
         }
+        .fullScreenCover(item: $authenticationService.authorizationRequest) { request in
+            XboxXALSignInView(
+                authorizationURL: request.url,
+                onRedirect: { authenticationService.completeMicrosoftSignIn($0) },
+                onCancel: { authenticationService.cancelMicrosoftSignIn() }
+            )
+        }
         .alert("Native streaming", isPresented: $showPlayerStatus) {
             Button("OK", role: .cancel) { }
         } message: {
