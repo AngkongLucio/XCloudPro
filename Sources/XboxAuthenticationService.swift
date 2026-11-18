@@ -397,7 +397,7 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
             ]
 
             do {
-                let data = try await signedJSONRequest(url: url, payload: payload, using: key)
+                let data = try await signedJSONRequest(url: url, payload: payload, using: key, includeContentType: false)
                 return try requiredString(data, path: ["Token"])
             } catch let error as XboxAuthenticationError {
                 guard case .serverRejected(let statusCode, let details) = error else {
@@ -563,17 +563,19 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
         )
     }
 
-    private func signedJSONRequest(url: URL, payload: [String: Any], using key: XBLProofKey) async throws -> Data {
-        try await signedJSONRequestWithResponse(url: url, payload: payload, using: key).0
+    private func signedJSONRequest(url: URL, payload: [String: Any], using key: XBLProofKey, includeContentType: Bool = true) async throws -> Data {
+        try await signedJSONRequestWithResponse(url: url, payload: payload, using: key, includeContentType: includeContentType).0
     }
 
-    private func signedJSONRequestWithResponse(url: URL, payload: [String: Any], using key: XBLProofKey) async throws -> (Data, URLResponse) {
+    private func signedJSONRequestWithResponse(url: URL, payload: [String: Any], using key: XBLProofKey, includeContentType: Bool = true) async throws -> (Data, URLResponse) {
         let body = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
         let signature = try key.signatureHeader(url: url, authorizationToken: "", body: body)
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.httpBody = body
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if includeContentType {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
         request.setValue("1", forHTTPHeaderField: "x-xbl-contract-version")
         request.setValue("no-store, must-revalidate, no-cache", forHTTPHeaderField: "Cache-Control")
         request.setValue(signature, forHTTPHeaderField: "Signature")
