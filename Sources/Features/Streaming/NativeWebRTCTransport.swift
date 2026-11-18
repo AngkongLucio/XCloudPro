@@ -60,7 +60,7 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
         }
     }
 
-    func start(using service: XboxCloudSessionService) async throws {
+    func start(using service: any XboxStreamingSessionSignaling) async throws {
         guard peerConnection == nil else { return }
         state = .preparing
         localCandidates.removeAll()
