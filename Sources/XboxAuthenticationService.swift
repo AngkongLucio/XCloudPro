@@ -464,7 +464,7 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
             let serialNumber = UUID().uuidString.lowercased()
             // Match XStreaming's device-auth JSON byte-for-byte in field order.
             // Interpolated values are UUIDs and base64url JWK coordinates.
-            let bodyString = "{\"Properties\":{\"AuthMethod\":\"ProofOfPossession\",\"Id\":\"{\\(deviceID)}\",\"DeviceType\":\"Android\",\"SerialNumber\":\"{\\(serialNumber)}\",\"Version\":\"15.0\",\"ProofKey\":{\"use\":\"sig\",\"alg\":\"ES256\",\"kty\":\"EC\",\"crv\":\"P-256\",\"x\":\"\\(key.jwkX)\",\"y\":\"\\(key.jwkY)\"}},\"RelyingParty\":\"http://auth.xboxlive.com\",\"TokenType\":\"JWT\"}"
+            let bodyString = "{\"Properties\":{\"AuthMethod\":\"ProofOfPossession\",\"Id\":\"{\(deviceID)}\",\"DeviceType\":\"Android\",\"SerialNumber\":\"{\(serialNumber)}\",\"Version\":\"15.0\",\"ProofKey\":{\"use\":\"sig\",\"alg\":\"ES256\",\"kty\":\"EC\",\"crv\":\"P-256\",\"x\":\"\(key.jwkX)\",\"y\":\"\(key.jwkY)\"}},\"RelyingParty\":\"http://auth.xboxlive.com\",\"TokenType\":\"JWT\"}"
             let body = Data(bodyString.utf8)
 
             do {
