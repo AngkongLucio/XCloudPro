@@ -606,7 +606,15 @@ struct ContentView: View {
     private var accountPage: some View {
         VStack(alignment: .leading, spacing: 20) {
             heading("MICROSOFT ACCOUNT", subtitle: "Sign in with the same account you use for Xbox Cloud Gaming in Safari.")
+            accountCard
+            settingsInfo("Account provider", value: "Microsoft / Xbox", icon: "person.badge.key.fill")
+            settingsInfo("Gamertag", value: authenticationService.account?.gamertag ?? "Not connected", icon: "person.text.rectangle")
+            settingsInfo("Xbox user ID", value: authenticationService.account?.id ?? "Available after sign-in", icon: "number")
+            settingsInfo("Cloud token", value: authenticationService.account == nil ? "Not available" : "Refresh supported when needed", icon: "key.horizontal")
+        }
+    }
 
+    private var accountCard: some View {
             VStack(alignment: .leading, spacing: 15) {
                 HStack(spacing: 14) {
                     Image(systemName: "person.crop.circle.fill")
@@ -809,12 +817,6 @@ struct ContentView: View {
             }
             .padding(18)
             .background(ConsolePalette.surface, in: RoundedRectangle(cornerRadius: 18))
-
-            settingsInfo("Account provider", value: "Microsoft / Xbox", icon: "person.badge.key.fill")
-            settingsInfo("Gamertag", value: authenticationService.account?.gamertag ?? "Not connected", icon: "person.text.rectangle")
-            settingsInfo("Xbox user ID", value: authenticationService.account?.id ?? "Available after sign-in", icon: "number")
-            settingsInfo("Cloud token", value: authenticationService.account == nil ? "Not available" : "Refresh supported when needed", icon: "key.horizontal")
-        }
     }
 
     private var settingsPage: some View {
