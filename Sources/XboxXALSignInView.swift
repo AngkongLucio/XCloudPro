@@ -62,6 +62,7 @@ private struct XALAuthorizationWebView: UIViewRepresentable {
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
+        webView.uiDelegate = context.coordinator
         webView.allowsBackForwardNavigationGestures = true
         webView.isOpaque = false
         webView.backgroundColor = .black
@@ -72,7 +73,7 @@ private struct XALAuthorizationWebView: UIViewRepresentable {
 
     func updateUIView(_ uiView: WKWebView, context: Context) {}
 
-    final class Coordinator: NSObject, WKNavigationDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         private let onStatus: (String) -> Void
         private let onRedirect: (URL) -> Void
         private var didRedirect = false
@@ -80,6 +81,14 @@ private struct XALAuthorizationWebView: UIViewRepresentable {
         init(onStatus: @escaping (String) -> Void, onRedirect: @escaping (URL) -> Void) {
             self.onStatus = onStatus
             self.onRedirect = onRedirect
+        }
+
+        // Match React Native WebView's setSupportMultipleWindows=false:
+        // Microsoft sign-in popups stay inside this same authentication view.
+        func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+            guard navigationAction.targetFrame == nil else { return nil }
+            webView.load(navigationAction.request)
+            return nil
         }
 
         func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
