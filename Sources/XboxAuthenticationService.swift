@@ -175,16 +175,29 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
             }
 
             statusMessage = "Verifying Microsoft account…"
-            let userToken = try await exchangeAuthorizationCode(code, verifier: pkce.verifier)
+            let initialUserToken = try await exchangeAuthorizationCode(code, verifier: pkce.verifier)
+            try SecureTokenStore.save(initialUserToken.accessToken, account: "xbl.user-access-token")
+            try SecureTokenStore.save(initialUserToken.refreshToken, account: "xbl.user-refresh-token")
+
+            // Match XStreaming's first silent-auth pass: after the OAuth code
+            // exchange it refreshes the Microsoft user token, obtains a NEW
+            // device token, then performs Sisu authorization without reusing
+            // the Sisu-authentication SessionId.
+            statusMessage = "Refreshing Microsoft authorization…"
+            let userToken = try await refreshUserToken(initialUserToken.refreshToken)
             try SecureTokenStore.save(userToken.accessToken, account: "xbl.user-access-token")
             try SecureTokenStore.save(userToken.refreshToken, account: "xbl.user-refresh-token")
+
+            statusMessage = "Refreshing Xbox device authorization…"
+            let authorizedDeviceToken = try await requestDeviceToken(using: key)
+            try SecureTokenStore.save(authorizedDeviceToken, account: "xbl.device-token")
 
             statusMessage = "Authorizing Xbox profile…"
             let sisu = try await requestSisuAuthorization(
                 userAccessToken: userToken.accessToken,
-                deviceToken: deviceToken,
+                deviceToken: authorizedDeviceToken,
                 using: key,
-                sessionID: sisuAuthentication.sessionID
+                sessionID: nil
             )
             try SecureTokenStore.save(sisu.userToken, account: "xbl.sisu-user-token")
             try SecureTokenStore.save(sisu.titleToken, account: "xbl.sisu-title-token")
@@ -443,9 +456,9 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
     private func requestDeviceToken(using key: XBLProofKey) async throws -> String {
         let url = URL(string: "https://device.auth.xboxlive.com/device/authenticate")!
 
-        // XStreaming retries Device Authenticate on HTTP 400. Keep the retry bounded
-        // so a persistent service error cannot loop indefinitely.
-        for attempt in 1...2 {
+        // XStreaming's getDeviceTokenHack retries HTTP 400 up to 20 times.
+        // Keep the same bounded retry behavior and never retry other statuses.
+        for attempt in 1...20 {
             // XStreaming's native module uses UUID.randomUUID().toString().
             let deviceID = UUID().uuidString.lowercased()
             let serialNumber = UUID().uuidString.lowercased()
@@ -468,7 +481,7 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
                 }
                 throw XboxAuthenticationError.serverRejected(
                     statusCode,
-                    "device-auth attempt \(attempt)/2 | \(details)"
+                    "device-auth attempt \(attempt)/20 | \(details)"
                 )
             }
         }
