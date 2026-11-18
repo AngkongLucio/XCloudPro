@@ -157,13 +157,13 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
 
             let pkce = try PKCEChallenge.make()
             statusMessage = "Connecting to Microsoft…"
-            let authorizationURL = try await beginSisuAuthentication(
+            let sisuAuthentication = try await beginSisuAuthentication(
                 deviceToken: deviceToken,
                 challenge: pkce
             )
 
             statusMessage = "Waiting for Microsoft sign-in…"
-            let hintedURL = try microsoftSignInURL(authorizationURL, email: emailHint)
+            let hintedURL = try microsoftSignInURL(sisuAuthentication.url, email: emailHint)
             let callbackURL = try await openMicrosoftSignIn(hintedURL)
             guard let components = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false),
                   let returnedState = components.queryItems?.first(where: { $0.name == "state" })?.value,
@@ -184,7 +184,7 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
                 userAccessToken: userToken.accessToken,
                 deviceToken: deviceToken,
                 using: key,
-                sessionID: nil
+                sessionID: sisuAuthentication.sessionID
             )
             try SecureTokenStore.save(sisu.userToken, account: "xbl.sisu-user-token")
             try SecureTokenStore.save(sisu.titleToken, account: "xbl.sisu-title-token")
@@ -446,8 +446,9 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
         // XStreaming retries Device Authenticate on HTTP 400. Keep the retry bounded
         // so a persistent service error cannot loop indefinitely.
         for attempt in 1...2 {
-            let deviceID = UUID().uuidString.uppercased()
-            let serialNumber = UUID().uuidString.uppercased()
+            // XStreaming's native module uses UUID.randomUUID().toString().
+            let deviceID = UUID().uuidString.lowercased()
+            let serialNumber = UUID().uuidString.lowercased()
             // Match XStreaming's device-auth JSON byte-for-byte in field order.
             // Interpolated values are UUIDs and base64url JWK coordinates.
             let bodyString = """
@@ -475,7 +476,10 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
         throw XboxAuthenticationError.invalidResponse
     }
 
-    private func beginSisuAuthentication(deviceToken: String, challenge: PKCEChallenge) async throws -> URL {
+    private func beginSisuAuthentication(
+        deviceToken: String,
+        challenge: PKCEChallenge
+    ) async throws -> (url: URL, sessionID: String?) {
         let url = URL(string: "https://sisu.xboxlive.com/authenticate")!
         let payload: [String: Any] = [
             "AppId": Constants.appID,
@@ -492,14 +496,21 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
                 "state": challenge.state
             ]
         ]
-        let data = try await signedJSONRequest(url: url, payload: payload, using: proofKey!)
+        let (data, response) = try await signedJSONRequestWithResponse(
+            url: url,
+            payload: payload,
+            using: proofKey!,
+            includeContentType: false
+        )
         let object = try jsonObject(data)
         guard let nested = object["data"] as? [String: Any],
               let redirect = nested["MsaOauthRedirect"] as? String,
               let authorizationURL = URL(string: redirect) else {
             throw XboxAuthenticationError.missingValue("Microsoft authorization URL")
         }
-        return authorizationURL
+        let sessionID = (response as? HTTPURLResponse)?
+            .value(forHTTPHeaderField: "x-sessionid")
+        return (authorizationURL, sessionID)
     }
 
     private func exchangeAuthorizationCode(_ code: String, verifier: String) async throws -> UserOAuthToken {
@@ -641,9 +652,11 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
         request.httpBody = body
         if includeContentType {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        } else {
+            // XStreaming uses Axios 1.7.x and posts JSON.stringify(payload) as a
+            // string. Axios' POST default is form-urlencoded unless overridden.
+            request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         }
-        // Match XStreaming Axios defaults: Accept JSON and leave Content-Type unset
-        // for signed JSON-string bodies.
         request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
         request.setValue("1", forHTTPHeaderField: "x-xbl-contract-version")
         request.setValue("no-store, must-revalidate, no-cache", forHTTPHeaderField: "Cache-Control")
