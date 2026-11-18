@@ -380,24 +380,15 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
         for attempt in 1...2 {
             let deviceID = UUID().uuidString.uppercased()
             let serialNumber = UUID().uuidString.uppercased()
-            let payload: [String: Any] = [
-                "Properties": [
-                    "AuthMethod": "ProofOfPossession",
-                    "Id": "{\(deviceID)}",
-                    "DeviceType": "Android",
-                    "SerialNumber": "{\(serialNumber)}",
-                    "Version": "15.0",
-                    "ProofKey": [
-                        "use": "sig", "alg": "ES256", "kty": "EC", "crv": "P-256",
-                        "x": key.jwkX, "y": key.jwkY
-                    ]
-                ],
-                "RelyingParty": "http://auth.xboxlive.com",
-                "TokenType": "JWT"
-            ]
+            // Match XStreaming's device-auth JSON byte-for-byte in field order.
+            // Interpolated values are UUIDs and base64url JWK coordinates.
+            let bodyString = """
+            {"Properties":{"AuthMethod":"ProofOfPossession","Id":"{\(deviceID)}","DeviceType":"Android","SerialNumber":"{\(serialNumber)}","Version":"15.0","ProofKey":{"use":"sig","alg":"ES256","kty":"EC","crv":"P-256","x":"\(key.jwkX)","y":"\(key.jwkY)"}},"RelyingParty":"http://auth.xboxlive.com","TokenType":"JWT"}
+            """
+            let body = Data(bodyString.utf8)
 
             do {
-                let data = try await signedJSONRequest(url: url, payload: payload, using: key, includeContentType: false)
+                let data = try await signedJSONBodyRequest(url: url, body: body, using: key, includeContentType: false)
                 return try requiredString(data, path: ["Token"])
             } catch let error as XboxAuthenticationError {
                 guard case .serverRejected(let statusCode, let details) = error else {
@@ -569,6 +560,15 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
 
     private func signedJSONRequestWithResponse(url: URL, payload: [String: Any], using key: XBLProofKey, includeContentType: Bool = true) async throws -> (Data, URLResponse) {
         let body = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+        return try await signedJSONBodyRequestWithResponse(url: url, body: body, using: key, includeContentType: includeContentType)
+    }
+
+    private func signedJSONBodyRequest(url: URL, body: Data, using key: XBLProofKey, includeContentType: Bool) async throws -> Data {
+        try await signedJSONBodyRequestWithResponse(url: url, body: body, using: key, includeContentType: includeContentType).0
+    }
+
+    private func signedJSONBodyRequestWithResponse(url: URL, body: Data, using key: XBLProofKey, includeContentType: Bool) async throws -> (Data, URLResponse) {
+        // Sign the exact byte sequence that URLSession sends as the HTTP body.
         let signature = try key.signatureHeader(url: url, authorizationToken: "", body: body)
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -629,6 +629,12 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
                 }
                 if let date = http.value(forHTTPHeaderField: "Date") {
                     details.append("server-date: " + String(date.prefix(80)))
+                }
+                if let msCV = http.value(forHTTPHeaderField: "ms-cv") {
+                    details.append("ms-cv: " + String(msCV.prefix(120)))
+                }
+                if let proxySuccess = http.value(forHTTPHeaderField: "x-proxy-success") {
+                    details.append("x-proxy-success: " + String(proxySuccess.prefix(80)))
                 }
             }
             if details.count == 1 { details.append("The Xbox service rejected the request without a readable error code.") }
