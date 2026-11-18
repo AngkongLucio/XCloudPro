@@ -19,11 +19,11 @@ final class XboxCloudAppModel: ObservableObject {
     init(
         authenticationService: XboxAuthenticationService,
         controllerManager: ControllerManager,
-        streamCoordinator: NativeStreamCoordinator = NativeStreamCoordinator()
+        streamCoordinator: NativeStreamCoordinator? = nil
     ) {
         self.authenticationService = authenticationService
         self.controllerManager = controllerManager
-        self.streamCoordinator = streamCoordinator
+        self.streamCoordinator = streamCoordinator ?? NativeStreamCoordinator()
     }
 
     func attachControllerManager() {
