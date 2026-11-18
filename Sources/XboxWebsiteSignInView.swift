@@ -6,7 +6,7 @@ import WebKit
 struct XboxWebsiteSignInView: View {
     let onFinish: (String) -> Void
 
-    @Environment(\\.dismiss) private var dismiss
+    @Environment(\.dismiss) private var dismiss
     @State private var pageStatus = "Opening Microsoft sign-in…"
     @State private var didFinish = false
 
@@ -105,7 +105,7 @@ private struct XboxLoginWebView: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-            DispatchQueue.main.async { self.onStatus("Sign-in page error: \\(error.localizedDescription)") }
+            DispatchQueue.main.async { self.onStatus("Sign-in page error: \(error.localizedDescription)") }
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
