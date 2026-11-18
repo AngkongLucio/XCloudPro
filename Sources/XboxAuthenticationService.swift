@@ -476,7 +476,7 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
                 guard case .serverRejected(let statusCode, let details) = error else {
                     throw error
                 }
-                if statusCode == 400 && attempt == 1 {
+                if statusCode == 400 {
                     continue
                 }
                 throw XboxAuthenticationError.serverRejected(
