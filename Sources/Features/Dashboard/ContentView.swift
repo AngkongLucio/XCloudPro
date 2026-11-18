@@ -626,6 +626,72 @@ struct ContentView: View {
 
                 Rectangle().fill(.white.opacity(0.08)).frame(height: 1)
 
+                Button {
+                    Task {
+                        do {
+                            try await authenticationService.signInWithDeviceCode()
+                        } catch {
+                            showAuthenticationError = true
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 9) {
+                        if authenticationService.isAuthenticating {
+                            ProgressView().tint(.black)
+                        } else {
+                            Image(systemName: "number")
+                        }
+                        Text(authenticationService.isAuthenticating ? "WAITING FOR MICROSOFT…" : "SIGN IN WITH DEVICE CODE")
+                            .font(.system(size: 11, weight: .black)).tracking(0.8)
+                    }
+                    .foregroundStyle(.black)
+                    .frame(maxWidth: .infinity).frame(height: 46)
+                    .background(ConsolePalette.green, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .disabled(authenticationService.isAuthenticating || authenticationService.account != nil)
+
+                if let challenge = authenticationService.deviceCodeRequest {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("YOUR MICROSOFT CODE")
+                            .font(.system(size: 9, weight: .black)).tracking(1.1)
+                            .foregroundStyle(ConsolePalette.muted)
+                        HStack {
+                            Text(challenge.userCode)
+                                .font(.system(size: 25, weight: .black, design: .monospaced))
+                                .tracking(2)
+                                .foregroundStyle(ConsolePalette.green)
+                            Spacer()
+                            Button {
+                                UIPasteboard.general.string = challenge.userCode
+                            } label: {
+                                Image(systemName: "doc.on.doc")
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundStyle(ConsolePalette.green)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        Link(destination: challenge.verificationURL) {
+                            Label("OPEN MICROSOFT DEVICE LOGIN", systemImage: "arrow.up.right.square")
+                                .font(.system(size: 10, weight: .black))
+                                .foregroundStyle(ConsolePalette.green)
+                        }
+                        Text("Ilagay ang code sa Microsoft page at aprubahan ang sign-in. Awtomatikong magpapatuloy ang app.")
+                            .font(.system(size: 10)).foregroundStyle(ConsolePalette.muted)
+                        Button("CANCEL SIGN-IN", role: .cancel) {
+                            authenticationService.cancelDeviceCodeSignIn()
+                        }
+                        .font(.system(size: 10, weight: .bold))
+                    }
+                    .padding(14)
+                    .background(ConsolePalette.elevated, in: RoundedRectangle(cornerRadius: 13))
+                }
+
+                Text("LEGACY XAL SIGN-IN (FALLBACK)")
+                    .font(.system(size: 9, weight: .black)).tracking(1.1)
+                    .foregroundStyle(ConsolePalette.muted)
+                    .padding(.top, 5)
+
                 VStack(alignment: .leading, spacing: 7) {
                     Text("MICROSOFT EMAIL")
                         .font(.system(size: 9, weight: .black)).tracking(1.1)
@@ -657,7 +723,7 @@ struct ContentView: View {
                         } else {
                             Image(systemName: "xbox.logo")
                         }
-                        Text(authenticationService.isAuthenticating ? "CONNECTING TO MICROSOFT…" : "SIGN IN WITH MICROSOFT")
+                        Text(authenticationService.isAuthenticating ? "CONNECTING TO MICROSOFT…" : "SIGN IN WITH XAL")
                             .font(.system(size: 11, weight: .black)).tracking(0.8)
                     }
                     .foregroundStyle(.black)
