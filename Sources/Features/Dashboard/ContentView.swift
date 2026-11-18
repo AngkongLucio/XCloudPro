@@ -413,8 +413,8 @@ struct ContentView: View {
                     ProgressView("Loading Xbox cloud catalog…")
                         .tint(ConsolePalette.green)
                         .frame(maxWidth: .infinity).padding(32)
-                } else if let appModel.gamesError {
-                    Text(appModel.gamesError)
+                } else if let gamesError = appModel.gamesError {
+                    Text(gamesError)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.orange)
                         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
