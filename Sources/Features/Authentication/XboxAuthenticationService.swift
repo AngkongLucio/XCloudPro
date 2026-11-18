@@ -1191,7 +1191,25 @@ struct XboxConsoleRemotePlayCredentials {
     let userHash: String
 }
 
-struct MicrosoftDeviceCode: Identifiable {\n    let id = UUID()\n    let deviceCode: String\n    let userCode: String\n    let verificationURL: URL\n    let verificationURLComplete: URL?\n    let expiresAt: Date\n    let interval: Int\n    let message: String\n}\n\nprivate struct MSALXSTSResult {\n    let token: String\n    let xboxUserID: String\n    let userHash: String\n    let gamertag: String\n}\n\nprivate struct UserOAuthToken {
+struct MicrosoftDeviceCode: Identifiable {
+    let id = UUID()
+    let deviceCode: String
+    let userCode: String
+    let verificationURL: URL
+    let verificationURLComplete: URL?
+    let expiresAt: Date
+    let interval: Int
+    let message: String
+}
+
+private struct MSALXSTSResult {
+    let token: String
+    let xboxUserID: String
+    let userHash: String
+    let gamertag: String
+}
+
+private struct UserOAuthToken {
     let accessToken: String
     let refreshToken: String
 }
