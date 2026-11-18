@@ -452,13 +452,22 @@ struct ContentView: View {
                                 .font(.system(size: 9, weight: .black)).tracking(1.1)
                                 .foregroundStyle(ConsolePalette.muted)
                             Picker("Cloud region", selection: $authenticationService.selectedRegionName) {
-                                ForEach(authenticationService.availableRegions) { region in
-                                    Text(region.name).tag(Optional(region.name))
+                                Text("Automatic (Xbox default)").tag(String?.none)
+                                ForEach(authenticationService.regionContinents, id: \.self) { continent in
+                                    Section(continent) {
+                                        ForEach(authenticationService.availableRegions.filter { $0.continentName == continent }) { region in
+                                            Text("\(region.pickerTitle)\(region.isDefault ? " · Default" : "")")
+                                                .tag(Optional(region.name))
+                                        }
+                                    }
                                 }
                             }
                             .pickerStyle(.menu)
                             .tint(ConsolePalette.green)
-                            Text("Only regions returned by Xbox for this account are selectable.")
+                            .onChange(of: authenticationService.selectedRegionName) { _ in
+                                Task { await loadCloudGames() }
+                            }
+                            Text("Manual selection is applied to the game catalog and new cloud sessions. Only regions offered by Xbox for this account are selectable.")
                                 .font(.system(size: 9)).foregroundStyle(ConsolePalette.muted)
                         }
                     }
