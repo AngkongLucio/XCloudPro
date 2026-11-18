@@ -513,12 +513,12 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
         guard
             let gamertag = try? SecureTokenStore.load(account: "xbl.profile-gamertag"),
             let xuid = try? SecureTokenStore.load(account: "xbl.profile-xuid"),
-            let userHash = try? SecureTokenStore.load(account: "xbl.profile-user-hash"),
-            let refreshToken = try? SecureTokenStore.load(account: "xbl.user-refresh-token"),
-            let proofKey = try? SecureTokenStore.load(account: "xbl.proof-key"),
-            !refreshToken.isEmpty,
-            !proofKey.isEmpty
+            let userHash = try? SecureTokenStore.load(account: "xbl.profile-user-hash")
         else { return }
+        let msalRefresh = try? SecureTokenStore.load(account: "xbl.msal.refresh-token")
+        let xalRefresh = try? SecureTokenStore.load(account: "xbl.user-refresh-token")
+        let proofKey = try? SecureTokenStore.load(account: "xbl.proof-key")
+        guard (msalRefresh?.isEmpty == false) || (xalRefresh?.isEmpty == false && proofKey?.isEmpty == false) else { return }
         account = XboxAccountProfile(id: xuid, gamertag: gamertag, userHash: userHash)
         if let raw = try? SecureTokenStore.load(account: "xbl.cloud-regions"),
            let data = Data(base64Encoded: raw),
@@ -543,6 +543,20 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
     /// Returns a current cloud token and a server region supplied by Xbox.
     /// Credentials are silently refreshed when the streaming token is near expiry.
     func cloudSessionCredentials() async throws -> (gsToken: String, region: XboxCloudRegion) {
+        if try SecureTokenStore.load(account: "xbl.msal.refresh-token") != nil {
+            let cached = try SecureTokenStore.load(account: "xbl.cloud-stream-token")
+            let fresh = (cloudTokenExpiry ?? .distantPast).timeIntervalSinceNow > 120
+            if cached == nil || !fresh || availableRegions.isEmpty {
+                try await refreshMSALSession()
+            }
+            guard let token = try SecureTokenStore.load(account: "xbl.cloud-stream-token"),
+                  let region = availableRegions.first(where: { $0.name == selectedRegionName })
+                    ?? availableRegions.first(where: { $0.isDefault })
+                    ?? availableRegions.first else {
+                throw XboxAuthenticationError.missingValue("MSAL cloud streaming token or region")
+            }
+            return (token, region)
+        }
         let token = try SecureTokenStore.load(account: "xbl.cloud-stream-token")
         let isFresh = (cloudTokenExpiry ?? .distantPast).timeIntervalSinceNow > 120
         if token == nil || !isFresh || availableRegions.isEmpty {
@@ -561,6 +575,22 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
     /// The web token is used only for registered-console discovery; the xhome GS
     /// token is used only for /sessions/home signaling.
     func consoleRemotePlayCredentials() async throws -> XboxConsoleRemotePlayCredentials {
+        if try SecureTokenStore.load(account: "xbl.msal.refresh-token") != nil {
+            let cached = try SecureTokenStore.load(account: "xbl.msal.home-gs-token")
+            let fresh = (cloudTokenExpiry ?? .distantPast).timeIntervalSinceNow > 120
+            if cached == nil || !fresh { try await refreshMSALSession() }
+            guard let web = try SecureTokenStore.load(account: "xbl.msal.web-xsts"),
+                  let home = try SecureTokenStore.load(account: "xbl.msal.home-gs-token"),
+                  let userHash = account?.userHash else {
+                throw XboxAuthenticationError.missingValue("MSAL Xbox Remote Play credentials")
+            }
+            return XboxConsoleRemotePlayCredentials(
+                webToken: web,
+                homeGSToken: home,
+                regions: availableRegions,
+                userHash: userHash
+            )
+        }
         let cloudToken = try SecureTokenStore.load(account: "xbl.cloud-stream-token")
         let tokenIsFresh = (cloudTokenExpiry ?? .distantPast).timeIntervalSinceNow > 120
         if cloudToken == nil || !tokenIsFresh {
@@ -634,6 +664,25 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
     /// Xbox Cloud's /connect endpoint expects the Passport console-transfer token,
     /// not the ordinary Microsoft account access token.
     func cloudTransferToken() async throws -> String {
+        if let refreshToken = try SecureTokenStore.load(account: "xbl.msal.refresh-token") {
+            let url = URL(string: "https://login.live.com/oauth20_token.srf")!
+            let body = formEncoded([
+                "client_id": Constants.msalClientID,
+                "grant_type": "refresh_token",
+                "refresh_token": refreshToken,
+                "scope": "service::http://Passport.NET/purpose::PURPOSE_XBOX_CLOUD_CONSOLE_TRANSFER_TOKEN"
+            ])
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.httpBody = Data(body.utf8)
+            request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+            request.setValue("no-store, must-revalidate, no-cache", forHTTPHeaderField: "Cache-Control")
+            let object = try jsonObject(await perform(request))
+            if let rotated = object["refresh_token"] as? String, !rotated.isEmpty {
+                try SecureTokenStore.save(rotated, account: "xbl.msal.refresh-token")
+            }
+            return try string(object, "access_token")
+        }
         guard let refreshToken = try SecureTokenStore.load(account: "xbl.user-refresh-token") else {
             throw XboxAuthenticationError.missingValue("Microsoft refresh token")
         }
