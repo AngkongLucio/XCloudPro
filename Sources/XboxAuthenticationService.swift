@@ -192,7 +192,7 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
             )
 
             statusMessage = "Preparing Xbox Cloud Gaming…"
-            let streamingXSTS = try await requestXSTS(deviceToken: deviceToken, titleToken: sisu.titleToken, userToken: sisu.userToken, relyingParty: "http://gssv.xboxlive.com/", using: key)
+            let streamingXSTS = try await requestXSTS(userToken: sisu.userToken, relyingParty: "http://gssv.xboxlive.com/", using: key)
             let streamInfo = try await requestCloudStreamingToken(xstsToken: streamingXSTS)
             try SecureTokenStore.save(streamInfo.gsToken, account: "xbl.cloud-stream-token")
             cloudTokenExpiry = Date().addingTimeInterval(TimeInterval(streamInfo.durationInSeconds))
@@ -338,13 +338,14 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
             key = try XBLProofKey(rawRepresentation: data)
             proofKey = key
         }
-        // Device tokens are renewed with the user token before Sisu authorization.
-        let deviceToken = try await requestDeviceToken(using: key)
-        try SecureTokenStore.save(deviceToken, account: "xbl.device-token")
-
+        // Match XStreaming refresh order: refresh Microsoft user token first,
+        // then obtain a fresh device token before Sisu authorization.
         let userToken = try await refreshUserToken(refreshToken)
         try SecureTokenStore.save(userToken.accessToken, account: "xbl.user-access-token")
         try SecureTokenStore.save(userToken.refreshToken, account: "xbl.user-refresh-token")
+
+        let deviceToken = try await requestDeviceToken(using: key)
+        try SecureTokenStore.save(deviceToken, account: "xbl.device-token")
         let sisu = try await requestSisuAuthorization(
             userAccessToken: userToken.accessToken,
             deviceToken: deviceToken,
@@ -355,8 +356,6 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
         try SecureTokenStore.save(sisu.titleToken, account: "xbl.sisu-title-token")
         try SecureTokenStore.save(sisu.authorizationToken, account: "xbl.sisu-authorization-token")
         let xsts = try await requestXSTS(
-            deviceToken: deviceToken,
-            titleToken: sisu.titleToken,
             userToken: sisu.userToken,
             relyingParty: "http://gssv.xboxlive.com/",
             using: key
@@ -568,8 +567,6 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
     }
 
     private func requestXSTS(
-        deviceToken: String,
-        titleToken: String,
         userToken: String,
         relyingParty: String,
         using key: XBLProofKey
