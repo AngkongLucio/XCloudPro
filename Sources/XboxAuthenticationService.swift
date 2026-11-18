@@ -10,10 +10,56 @@ struct XboxAccountProfile: Equatable, Identifiable {
 }
 
 struct XboxCloudRegion: Codable, Equatable, Identifiable {
+    private static let metadata: [String: (displayName: String, continent: String)] = [
+        "EASTUS": ("East US", "North America"),
+        "EASTUS2": ("East US 2", "North America"),
+        "NORTHCENTRALUS": ("North Central US", "North America"),
+        "SOUTHCENTRALUS": ("South Central US", "North America"),
+        "WESTUS": ("West US", "North America"),
+        "WESTUS2": ("West US 2", "North America"),
+        "WESTUS3": ("West US 3", "North America"),
+        "MEXICOCENTRAL": ("Mexico Central", "North America"),
+        "BRAZILSOUTH": ("Brazil South", "South America"),
+        "CHILECENTRAL": ("Chile Central", "South America"),
+        "JAPANEAST": ("Japan East", "Asia"),
+        "KOREACENTRAL": ("Korea Central", "Asia"),
+        "CENTRALINDIA": ("Central India", "Asia"),
+        "SOUTHINDIA": ("South India", "Asia"),
+        "AUSTRALIAEAST": ("Australia East", "Australia"),
+        "AUSTRALIASOUTHEAST": ("Australia South East", "Australia"),
+        "SWEDENCENTRAL": ("Sweden Central", "Europe"),
+        "UKSOUTH": ("UK South", "Europe"),
+        "WESTEUROPE": ("West Europe", "Europe")
+    ]
+
     let name: String
     let baseURI: URL
     let isDefault: Bool
     var id: String { name }
+
+    var shortName: String {
+        baseURI.host?
+            .split(separator: ".")
+            .first
+            .map(String.init)?
+            .uppercased() ?? name.uppercased()
+    }
+
+    var displayName: String {
+        Self.metadata[name.uppercased()]?.displayName
+            ?? Self.metadata[shortName]?.displayName
+            ?? name
+    }
+
+    var continentName: String {
+        Self.metadata[name.uppercased()]?.continent
+            ?? Self.metadata[shortName]?.continent
+            ?? "Other"
+    }
+
+    var pickerTitle: String {
+        "\(shortName) — \(displayName)"
+    }
 }
 
 enum XboxAuthenticationError: LocalizedError {
@@ -61,6 +107,8 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
         didSet {
             if let selectedRegionName {
                 UserDefaults.standard.set(selectedRegionName, forKey: "xbl.selected-region")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "xbl.selected-region")
             }
         }
     }
@@ -151,7 +199,13 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
             try SecureTokenStore.save(String(cloudTokenExpiry!.timeIntervalSince1970), account: "xbl.cloud-token-expiry")
             availableRegions = streamInfo.regions
             try saveRegions(streamInfo.regions)
-            selectedRegionName = streamInfo.regions.first(where: { $0.isDefault })?.name ?? streamInfo.regions.first?.name
+            // Keep the user's manual region choice across sign-ins. Nil means Xbox default.
+            if let savedRegionName = UserDefaults.standard.string(forKey: "xbl.selected-region"),
+               streamInfo.regions.contains(where: { $0.name == savedRegionName }) {
+                selectedRegionName = savedRegionName
+            } else {
+                selectedRegionName = nil
+            }
             try SecureTokenStore.save(profile.gamertag, account: "xbl.profile-gamertag")
             try SecureTokenStore.save(profile.id, account: "xbl.profile-xuid")
             try SecureTokenStore.save(profile.userHash, account: "xbl.profile-user-hash")
@@ -207,6 +261,13 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
             cloudTokenExpiry = Date(timeIntervalSince1970: timestamp)
         }
         statusMessage = "Xbox account saved"
+    }
+
+    var regionContinents: [String] {
+        let order = ["Asia", "Australia", "Europe", "North America", "South America", "Other"]
+        return order.filter { continent in
+            availableRegions.contains(where: { $0.continentName == continent })
+        }
     }
 
     /// Returns a current cloud token and a server region supplied by Xbox.
@@ -298,8 +359,11 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
         try SecureTokenStore.save(String(cloudTokenExpiry!.timeIntervalSince1970), account: "xbl.cloud-token-expiry")
         availableRegions = streamInfo.regions
         try saveRegions(streamInfo.regions)
-        if !streamInfo.regions.contains(where: { $0.name == selectedRegionName }) {
-            selectedRegionName = streamInfo.regions.first(where: { $0.isDefault })?.name ?? streamInfo.regions.first?.name
+        if let selectedRegionName,
+           !streamInfo.regions.contains(where: { $0.name == selectedRegionName }) {
+            // The selected region disappeared from the refreshed Xbox offering list.
+            // Return to automatic/default instead of silently selecting another region.
+            self.selectedRegionName = nil
         }
         statusMessage = "Xbox Cloud credentials refreshed"
     }
