@@ -741,11 +741,11 @@ struct ContentView: View {
                     Label("Xbox account connected", systemImage: "checkmark.seal.fill")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(ConsolePalette.green)
-                    if !authenticationService.availableRegions.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("CLOUD REGION")
-                                .font(.system(size: 9, weight: .black)).tracking(1.1)
-                                .foregroundStyle(ConsolePalette.muted)
+                    VStack(alignment: .leading, spacing: 9) {
+                        Text("CLOUD REGION")
+                            .font(.system(size: 9, weight: .black)).tracking(1.1)
+                            .foregroundStyle(ConsolePalette.muted)
+                        if !authenticationService.availableRegions.isEmpty {
                             Picker("Cloud region", selection: $authenticationService.selectedRegionName) {
                                 Text("Automatic (Xbox default)").tag(String?.none)
                                 ForEach(authenticationService.regionContinents, id: \.self) { continent in
@@ -762,8 +762,38 @@ struct ContentView: View {
                             .onChange(of: authenticationService.selectedRegionName) { _ in
                                 Task { await loadCloudGames() }
                             }
-                            Text("Manual selection is applied to the game catalog and new cloud sessions. Only regions offered by Xbox for this account are selectable.")
+                            Text("Choose a server returned by Xbox, or use Automatic (Xbox default). The selection applies to the catalog and new cloud sessions.")
                                 .font(.system(size: 9)).foregroundStyle(ConsolePalette.muted)
+                        } else {
+                            Text(authenticationService.cloudAvailabilityMessage ?? "No Cloud Gaming regions have been returned by Xbox yet.")
+                                .font(.system(size: 10)).foregroundStyle(ConsolePalette.muted)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Button {
+                                Task {
+                                    do {
+                                        try await authenticationService.retryMSALCloudCredentials()
+                                        await loadCloudGames()
+                                    } catch {
+                                        authenticationService.errorMessage = error.localizedDescription
+                                        showAuthenticationError = true
+                                    }
+                                }
+                            } label: {
+                                HStack(spacing: 8) {
+                                    if authenticationService.isAuthenticating {
+                                        ProgressView().tint(.black)
+                                    } else {
+                                        Image(systemName: "arrow.clockwise")
+                                    }
+                                    Text("RETRY CLOUD TOKEN / LOAD REGIONS")
+                                        .font(.system(size: 10, weight: .black)).tracking(0.5)
+                                }
+                                .foregroundStyle(.black)
+                                .frame(maxWidth: .infinity).frame(height: 42)
+                                .background(ConsolePalette.green, in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(authenticationService.isAuthenticating)
                         }
                     }
                     Button("SIGN OUT", role: .destructive) {
