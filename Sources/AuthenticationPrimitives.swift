@@ -91,7 +91,11 @@ struct XBLProofKey {
         date: Date = Date()
     ) throws -> String {
         let path = url.path
-        let windowsTicks = UInt64((date.timeIntervalSince1970 + 11_644_473_600) * 10_000_000)
+        // XStreaming computes the Windows timestamp from whole Unix seconds.
+                // Keep this identical to its reference implementation; fractional
+                // sub-second ticks can otherwise produce a different signed message.
+                let unixSeconds = Int64(date.timeIntervalSince1970)
+                let windowsTicks = UInt64(unixSeconds + 11_644_473_600) * 10_000_000
 
         var signedMessage = Data()
         signedMessage.appendBigEndian(UInt32(1))
