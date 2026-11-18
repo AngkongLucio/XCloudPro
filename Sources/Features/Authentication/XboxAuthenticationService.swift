@@ -1096,6 +1096,19 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("no-store, must-revalidate, no-cache", forHTTPHeaderField: "Cache-Control")
         request.setValue("XboxComBrowser", forHTTPHeaderField: "x-gssv-client")
+        // Better xCloud-style region restriction hint. This only changes the
+        // forwarded client IP hint; Xbox still decides whether the offering is allowed.
+        let bypassRegion = UserDefaults.standard.string(forKey: "xcloudpro.regionBypass") ?? "off"
+        let bypassIPs: [String: String] = [
+            "br": "169.150.198.66",
+            "kr": "121.125.60.151",
+            "jp": "138.199.21.239",
+            "pl": "45.134.212.66",
+            "us": "143.244.47.65"
+        ]
+        if let forwardedIP = bypassIPs[bypassRegion] {
+            request.setValue(forwardedIP, forHTTPHeaderField: "X-Forwarded-For")
+        }
         let data = try await perform(request)
         let object = try jsonObject(data)
         let settings = object["offeringSettings"] as? [String: Any] ?? [:]
