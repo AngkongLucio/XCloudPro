@@ -9,6 +9,7 @@ final class NativeStreamCoordinator: ObservableObject {
 
     let transport: NativeWebRTCTransport
     private var service: XboxCloudSessionService?
+    private var consoleRemoteService: XboxConsoleRemotePlayService?
     private var transportObservation: AnyCancellable?
 
     init(transport: NativeWebRTCTransport? = nil) {
@@ -37,7 +38,7 @@ final class NativeStreamCoordinator: ObservableObject {
         maxFPS: Int = 60,
         msalUserTokenProvider: @escaping () async throws -> String
     ) async {
-        guard !isStarting, !isStreaming, service == nil else { return }
+        guard !isStarting, !isStreaming, service == nil, consoleRemoteService == nil else { return }
         isStarting = true
         lastError = nil
 
@@ -71,6 +72,33 @@ final class NativeStreamCoordinator: ObservableObject {
         }
     }
 
+    /// Starts a local Xbox home-streaming session using the same native WebRTC
+    /// transport as Cloud Gaming, but a separate /sessions/home service.
+    func startConsoleRemotePlay(
+        using consoleService: XboxConsoleRemotePlayService,
+        consoleID: String,
+        videoWidth: Int = 1920,
+        videoHeight: Int = 1080,
+        maxFPS: Int = 60
+    ) async {
+        guard !isStarting, !isStreaming, service == nil, consoleRemoteService == nil else { return }
+        isStarting = true
+        lastError = nil
+        do {
+            _ = try await consoleService.startConsoleSession(consoleID: consoleID)
+            transport.setVideoPreference(width: videoWidth, height: videoHeight, maxFPS: maxFPS)
+            try await transport.start(using: consoleService)
+            self.consoleRemoteService = consoleService
+            isStarting = false
+        } catch {
+            lastError = error.localizedDescription
+            isStarting = false
+            isStreaming = false
+            transport.stop()
+            try? await consoleService.stopConsoleSession()
+        }
+    }
+
     func attachControllerManager(_ manager: ControllerManager) {
         transport.attachControllerManager(manager)
     }
@@ -81,6 +109,10 @@ final class NativeStreamCoordinator: ObservableObject {
             try? await service.stopCloudGame()
         }
         service = nil
+        if let consoleRemoteService {
+            try? await consoleRemoteService.stopConsoleSession()
+        }
+        consoleRemoteService = nil
         isStarting = false
         isStreaming = false
     }
