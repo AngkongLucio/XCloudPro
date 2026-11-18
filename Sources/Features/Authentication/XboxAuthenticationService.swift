@@ -492,6 +492,8 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
 
     func signOut() {
         let keys = [
+            "xbl.msal.access-token", "xbl.msal.refresh-token", "xbl.msal.xbox-user-token",
+            "xbl.msal.web-xsts", "xbl.msal.home-xsts", "xbl.msal.home-gs-token", "xbl.msal.home-regions",
             "xbl.proof-key", "xbl.device-token", "xbl.user-access-token", "xbl.user-refresh-token",
             "xbl.sisu-user-token", "xbl.sisu-title-token", "xbl.sisu-authorization-token",
             "xbl.cloud-stream-token", "xbl.cloud-token-expiry", "xbl.cloud-regions", "xbl.profile-gamertag", "xbl.profile-xuid",
