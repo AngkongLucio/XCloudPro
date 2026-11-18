@@ -112,6 +112,7 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
     @Published private(set) var isAuthenticating = false
     @Published private(set) var statusMessage = "Not signed in"
     @Published private(set) var availableRegions: [XboxCloudRegion] = []
+    @Published private(set) var cloudAvailabilityMessage: String?
     @Published var selectedRegionName: String? {
         didSet {
             if let selectedRegionName {
