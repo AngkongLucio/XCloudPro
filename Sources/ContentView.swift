@@ -35,8 +35,6 @@ struct ContentView: View {
     @State private var showPlayerStatus = false
     @State private var showAuthenticationError = false
     @State private var microsoftEmail = ""
-    @State private var showXboxWebsiteLogin = false
-    @State private var websiteLoginStatus = "Waiting for Microsoft sign-in"
     @StateObject private var streamCoordinator = NativeStreamCoordinator()
     @State private var cloudGames: [CloudGame] = []
     @State private var isLoadingGames = false
@@ -115,12 +113,6 @@ struct ContentView: View {
         } message: {
             Text(authenticationService.errorMessage ?? "Sign-in could not be completed.")
         }
-        .fullScreenCover(isPresented: $showXboxWebsiteLogin) {
-            XboxWebsiteSignInView { result in
-                websiteLoginStatus = result
-                showXboxWebsiteLogin = false
-            }
-        }
     }
 
     private var loginGate: some View {
@@ -143,24 +135,44 @@ struct ContentView: View {
                         .font(.system(size: 25, weight: .black, design: .rounded))
                         .tracking(2.2)
                         .foregroundStyle(.white)
-                    Text("OFFICIAL MICROSOFT ACCOUNT SIGN-IN")
+                    Text("XSTREAMING-STYLE XAL AUTHENTICATION")
                         .font(.system(size: 10, weight: .black))
                         .tracking(1.5)
                         .foregroundStyle(ConsolePalette.muted)
                         .padding(.top, 8)
 
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("Sign in securely on the official Microsoft page. Your password stays with Microsoft; XCloudPro does not collect it.")
+                        Text("Sign in through Microsoft's official authorization flow. XCloudPro does not ask for or store your Microsoft password.")
                             .font(.system(size: 12))
                             .foregroundStyle(ConsolePalette.muted)
                             .fixedSize(horizontal: false, vertical: true)
 
+                        TextField("Microsoft account email", text: $microsoftEmail)
+                            .textContentType(.username)
+                            .keyboardType(.emailAddress)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .padding(.horizontal, 14)
+                            .frame(height: 48)
+                            .background(ConsolePalette.elevated, in: RoundedRectangle(cornerRadius: 11))
+                            .foregroundStyle(.white)
+
                         Button {
-                            showXboxWebsiteLogin = true
+                            Task {
+                                do {
+                                    try await authenticationService.signIn(email: microsoftEmail)
+                                } catch {
+                                    showAuthenticationError = true
+                                }
+                            }
                         } label: {
                             HStack(spacing: 9) {
-                                Image(systemName: "globe")
-                                Text("SIGN IN WITH MICROSOFT")
+                                if authenticationService.isAuthenticating {
+                                    ProgressView().tint(.black)
+                                } else {
+                                    Image(systemName: "xbox.logo")
+                                }
+                                Text(authenticationService.isAuthenticating ? "CONNECTING TO XBOX…" : "SIGN IN WITH MICROSOFT")
                                     .font(.system(size: 11, weight: .black))
                                     .tracking(0.8)
                             }
@@ -170,22 +182,29 @@ struct ContentView: View {
                             .background(ConsolePalette.green, in: Capsule())
                         }
                         .buttonStyle(.plain)
+                        .disabled(authenticationService.isAuthenticating || microsoftEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .opacity(authenticationService.isAuthenticating ? 0.7 : 1)
 
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("WEBSITE SESSION CHECK")
+                            Text("XBOX AUTHENTICATION STATUS")
                                 .font(.system(size: 9, weight: .black))
                                 .tracking(1.0)
                                 .foregroundStyle(ConsolePalette.muted)
-                            Text(websiteLoginStatus)
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.85))
-                                .fixedSize(horizontal: false, vertical: true)
+                            HStack(spacing: 8) {
+                                if authenticationService.isAuthenticating {
+                                    ProgressView().tint(ConsolePalette.green).scaleEffect(0.8)
+                                }
+                                Text(authenticationService.statusMessage)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.85))
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(12)
                         .background(ConsolePalette.elevated, in: RoundedRectangle(cornerRadius: 10))
 
-                        Text("After Microsoft returns to XCloudPro, the app will validate the Xbox Cloud session. Your profile and game library will appear only after the native Xbox credentials are confirmed.")
+                        Text("XCloudPro follows the XStreaming XAL sequence: device proof, Sisu, Microsoft OAuth, Xbox authorization and Cloud token validation. The app opens only after the Cloud session is ready.")
                             .font(.system(size: 10))
                             .foregroundStyle(ConsolePalette.muted)
                             .fixedSize(horizontal: false, vertical: true)
@@ -201,7 +220,7 @@ struct ContentView: View {
                     .padding(.top, 30)
 
                     Spacer(minLength: 24)
-                    Text("XBOX CLOUD GAMING • WEBSITE SIGN-IN TEST")
+                    Text("XBOX CLOUD GAMING • SECURE XAL SIGN-IN")
                         .font(.system(size: 8, weight: .bold))
                         .tracking(1.1)
                         .foregroundStyle(ConsolePalette.muted.opacity(0.65))
