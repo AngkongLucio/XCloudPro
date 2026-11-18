@@ -31,6 +31,7 @@ struct XboxCloudRegion: Codable, Equatable, Identifiable {
         "SOUTHINDIA": ("South India", "Asia"),
         "AUSTRALIAEAST": ("Australia East", "Australia"),
         "AUSTRALIASOUTHEAST": ("Australia South East", "Australia"),
+        "NEWZEALANDNORTH": ("New Zealand North", "Oceania"),
         "SWEDENCENTRAL": ("Sweden Central", "Europe"),
         "UKSOUTH": ("UK South", "Europe"),
         "WESTEUROPE": ("West Europe", "Europe")
