@@ -35,6 +35,8 @@ struct ContentView: View {
     @State private var showPlayerStatus = false
     @State private var showAuthenticationError = false
     @State private var microsoftEmail = ""
+    @State private var showXboxWebsiteLogin = false
+    @State private var websiteLoginStatus = "Not checked yet"
     @StateObject private var streamCoordinator = NativeStreamCoordinator()
     @State private var cloudGames: [CloudGame] = []
     @State private var isLoadingGames = false
@@ -113,6 +115,12 @@ struct ContentView: View {
         } message: {
             Text(authenticationService.errorMessage ?? "Sign-in could not be completed.")
         }
+        .fullScreenCover(isPresented: $showXboxWebsiteLogin) {
+            XboxWebsiteSignInView { result in
+                websiteLoginStatus = result
+                showXboxWebsiteLogin = false
+            }
+        }
     }
 
     private var loginGate: some View {
@@ -135,67 +143,55 @@ struct ContentView: View {
                         .font(.system(size: 25, weight: .black, design: .rounded))
                         .tracking(2.2)
                         .foregroundStyle(.white)
-                    Text("SIGN IN TO CONTINUE")
+                    Text("SIGN IN WITH THE OFFICIAL XBOX WEBSITE")
                         .font(.system(size: 10, weight: .black))
-                        .tracking(2.0)
+                        .tracking(1.5)
                         .foregroundStyle(ConsolePalette.muted)
                         .padding(.top, 8)
 
-                    VStack(alignment: .leading, spacing: 15) {
-                        VStack(alignment: .leading, spacing: 7) {
-                            Text("MICROSOFT EMAIL")
-                                .font(.system(size: 9, weight: .black))
-                                .tracking(1.1)
-                                .foregroundStyle(ConsolePalette.muted)
-                            TextField("name@example.com", text: $microsoftEmail)
-                                .font(.system(size: 14, weight: .medium))
-                                .keyboardType(.emailAddress)
-                                .textContentType(.emailAddress)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                                .padding(.horizontal, 13)
-                                .frame(height: 48)
-                                .background(ConsolePalette.elevated, in: RoundedRectangle(cornerRadius: 11))
-                                .disabled(authenticationService.isAuthenticating)
-                        }
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Your Microsoft account sign-in opens on xbox.com/play. XCloud Pro does not collect or store your Microsoft password.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(ConsolePalette.muted)
+                            .fixedSize(horizontal: false, vertical: true)
 
                         Button {
-                            Task {
-                                do {
-                                    try await authenticationService.signIn(email: microsoftEmail)
-                                } catch {
-                                    showAuthenticationError = true
-                                }
-                            }
+                            showXboxWebsiteLogin = true
                         } label: {
                             HStack(spacing: 9) {
-                                if authenticationService.isAuthenticating {
-                                    ProgressView().tint(.black)
-                                } else {
-                                    Image(systemName: "xbox.logo")
-                                }
-                                Text(authenticationService.isAuthenticating ? "CONNECTING TO MICROSOFT…" : "SIGN IN WITH MICROSOFT")
+                                Image(systemName: "globe")
+                                Text("SIGN IN ON XBOX.COM")
                                     .font(.system(size: 11, weight: .black))
                                     .tracking(0.8)
                             }
                             .foregroundStyle(.black)
                             .frame(maxWidth: .infinity)
-                            .frame(height: 48)
+                            .frame(height: 50)
                             .background(ConsolePalette.green, in: Capsule())
                         }
                         .buttonStyle(.plain)
-                        .disabled(
-                            authenticationService.isAuthenticating ||
-                            !microsoftEmail.trimmingCharacters(in: .whitespacesAndNewlines).contains("@")
-                        )
 
-                        Text("Sign in with your Microsoft account to unlock the XCloud Pro console. Your password and verification are handled only in Microsoft's secure sign-in window.")
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("WEBSITE SESSION CHECK")
+                                .font(.system(size: 9, weight: .black))
+                                .tracking(1.0)
+                                .foregroundStyle(ConsolePalette.muted)
+                            Text(websiteLoginStatus)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.85))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                        .background(ConsolePalette.elevated, in: RoundedRectangle(cornerRadius: 10))
+
+                        Text("Important: detecting website cookies does not yet prove Xbox authentication or create the native cloud-streaming token. This build is a sign-in/session compatibility test; the native console stays locked until a valid native Xbox session is available.")
                             .font(.system(size: 10))
                             .foregroundStyle(ConsolePalette.muted)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .padding(18)
-                    .frame(maxWidth: 420)
+                    .frame(maxWidth: 440)
                     .background(ConsolePalette.surface, in: RoundedRectangle(cornerRadius: 18))
                     .overlay {
                         RoundedRectangle(cornerRadius: 18)
@@ -204,15 +200,10 @@ struct ContentView: View {
                     .padding(.horizontal, 22)
                     .padding(.top, 30)
 
-                    Text(authenticationService.statusMessage.uppercased())
-                        .font(.system(size: 9, weight: .bold))
-                        .tracking(0.8)
-                        .foregroundStyle(ConsolePalette.muted)
-                        .padding(.top, 18)
                     Spacer(minLength: 24)
-                    Text("XBOX CLOUD GAMING • NATIVE CONSOLE")
+                    Text("XBOX CLOUD GAMING • WEBSITE SIGN-IN TEST")
                         .font(.system(size: 8, weight: .bold))
-                        .tracking(1.2)
+                        .tracking(1.1)
                         .foregroundStyle(ConsolePalette.muted.opacity(0.65))
                         .padding(.bottom, 18)
                 }
