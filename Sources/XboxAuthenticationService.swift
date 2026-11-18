@@ -566,16 +566,30 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
         let (data, response) = try await urlSession.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw XboxAuthenticationError.invalidResponse }
         guard (200..<300).contains(http.statusCode) else {
-            // Identify the failing service endpoint without logging request bodies,
-            // authorization headers, or any account/token material.
+            // Report only safe error metadata. Never include response bodies,
+            // request payloads, cookies, authorization headers, or token values.
             let endpoint = "\(request.url?.host ?? "unknown-host")\(request.url?.path ?? "")"
-            let message = (try? jsonObject(data)["message"] as? String)
-                ?? (try? jsonObject(data)["Message"] as? String)
-                ?? "The Xbox service rejected the request."
-            throw XboxAuthenticationError.serverRejected(
-                http.statusCode,
-                "\(endpoint): \(message)"
-            )
+            let responseObject = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+            let safeMessageKeys = ["message", "Message", "error_description", "error", "Error", "code", "Code", "XErr", "xErr"]
+            let serviceMessage = safeMessageKeys
+                .compactMap { responseObject[$0] }
+                .compactMap { value -> String? in
+                    if let text = value as? String { return text }
+                    if let number = value as? NSNumber { return number.stringValue }
+                    return nil
+                }
+                .first(where: { !$0.isEmpty })
+            let serviceErrorHeader = http.value(forHTTPHeaderField: "x-err")
+                ?? http.value(forHTTPHeaderField: "x-xbl-error")
+            let requestID = http.value(forHTTPHeaderField: "x-request-id")
+                ?? http.value(forHTTPHeaderField: "request-id")
+                ?? http.value(forHTTPHeaderField: "x-ms-request-id")
+            var details = [endpoint]
+            if let serviceMessage { details.append("service: " + String(serviceMessage.prefix(240))) }
+            if let serviceErrorHeader { details.append("Xbox error: " + String(serviceErrorHeader.prefix(80))) }
+            if let requestID { details.append("request ID: " + String(requestID.prefix(100))) }
+            if details.count == 1 { details.append("The Xbox service rejected the request without a readable error code.") }
+            throw XboxAuthenticationError.serverRejected(http.statusCode, details.joined(separator: " | "))
         }
         return (data, response)
     }
