@@ -91,7 +91,7 @@ private struct XALAuthorizationWebView: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-            DispatchQueue.main.async { self.onStatus("Sign-in page error: \\(error.localizedDescription)") }
+            DispatchQueue.main.async { self.onStatus("Sign-in page error: \(error.localizedDescription)") }
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
