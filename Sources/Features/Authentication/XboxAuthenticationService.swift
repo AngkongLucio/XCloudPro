@@ -195,6 +195,7 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
             cloudTokenExpiry = Date().addingTimeInterval(TimeInterval(tokenLifetime))
             try SecureTokenStore.save(String(cloudTokenExpiry!.timeIntervalSince1970), account: "xbl.cloud-token-expiry")
             if let cloudInfo {
+                cloudAvailabilityMessage = nil
                 try SecureTokenStore.save(cloudInfo.gsToken, account: "xbl.cloud-stream-token")
                 availableRegions = cloudInfo.regions
                 try saveRegions(cloudInfo.regions)
@@ -209,10 +210,11 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
                 try SecureTokenStore.delete(account: "xbl.cloud-regions")
                 availableRegions = []
                 selectedRegionName = nil
+                cloudAvailabilityMessage = "Microsoft accepted your sign-in, but Xbox denied the Cloud Gaming offering. No cloud regions were returned for this account."
             }
             account = profile
             statusMessage = cloudInfo == nil
-                ? "Signed in — Xbox Cloud Gaming is unavailable; Remote Play credentials saved"
+                ? "Signed in — Cloud Gaming offering unavailable; Remote Play credentials saved"
                 : "Signed in — Microsoft Device Code"
         } catch {
             statusMessage = "Device-code sign-in failed"
@@ -530,6 +532,7 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
         selectedRegionName = nil
         UserDefaults.standard.removeObject(forKey: "xbl.selected-region")
         cloudTokenExpiry = nil
+        cloudAvailabilityMessage = nil
         statusMessage = "Not signed in"
         errorMessage = nil
         proofKey = nil
@@ -580,6 +583,9 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
             if cached == nil || !fresh || availableRegions.isEmpty {
                 try await refreshMSALSession()
             }
+            if try SecureTokenStore.load(account: "xbl.cloud-stream-token") == nil || availableRegions.isEmpty {
+                try await retryMSALCloudCredentials()
+            }
             guard let token = try SecureTokenStore.load(account: "xbl.cloud-stream-token"),
                   let region = availableRegions.first(where: { $0.name == selectedRegionName })
                     ?? availableRegions.first(where: { $0.isDefault })
@@ -600,6 +606,33 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
             throw XboxAuthenticationError.missingValue("cloud streaming token or region")
         }
         return (gsToken, region)
+    }
+
+    /// Re-request the Cloud Gaming offering independently from Microsoft sign-in.
+    /// Regions are populated only from Xbox's authenticated offeringSettings response.
+    func retryMSALCloudCredentials() async throws {
+        guard let homeXSTS = try SecureTokenStore.load(account: "xbl.msal.home-xsts"),
+              !homeXSTS.isEmpty else {
+            throw XboxAuthenticationError.missingValue("Xbox home XSTS token; sign in again")
+        }
+        do {
+            let cloudInfo = try await requestCloudStreamingToken(xstsToken: homeXSTS)
+            try SecureTokenStore.save(cloudInfo.gsToken, account: "xbl.cloud-stream-token")
+            try saveRegions(cloudInfo.regions)
+            availableRegions = cloudInfo.regions
+            cloudTokenExpiry = Date().addingTimeInterval(TimeInterval(cloudInfo.durationInSeconds))
+            try SecureTokenStore.save(String(cloudTokenExpiry!.timeIntervalSince1970), account: "xbl.cloud-token-expiry")
+            if let selectedRegionName,
+               !cloudInfo.regions.contains(where: { $0.name == selectedRegionName }) {
+                self.selectedRegionName = nil
+            }
+            cloudAvailabilityMessage = nil
+            statusMessage = "Xbox Cloud token ready — choose a server region"
+        } catch {
+            cloudAvailabilityMessage = error.localizedDescription
+            statusMessage = "Signed in — Xbox Cloud Gaming offering unavailable"
+            throw error
+        }
     }
 
     /// Produces the distinct credentials required for Xbox Console Remote Play.
