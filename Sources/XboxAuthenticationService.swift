@@ -1,7 +1,11 @@
-import AuthenticationServices
 import Combine
 import Foundation
 import UIKit
+
+struct XboxAuthorizationRequest: Identifiable {
+    let id = UUID()
+    let url: URL
+}
 
 struct XboxAccountProfile: Equatable, Identifiable {
     let id: String
@@ -89,7 +93,7 @@ enum XboxAuthenticationError: LocalizedError {
 /// Native Microsoft/Xbox XAL sign-in. Protocol constants follow the public
 /// XStreaming iOS authentication reference; no password is collected by XCloudPro.
 @MainActor
-final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenticationPresentationContextProviding {
+final class XboxAuthenticationService: NSObject, ObservableObject, NSObjectProtocol {
     private enum Constants {
         static let appID = "000000004c20a908"
         static let titleID = "328178078"
@@ -116,7 +120,8 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
     @Published var errorMessage: String?
 
     private let urlSession: URLSession
-    private var webAuthenticationSession: ASWebAuthenticationSession?
+    @Published var authorizationRequest: XboxAuthorizationRequest?
+    private var authorizationContinuation: CheckedContinuation<URL, Error>?
     private var proofKey: XBLProofKey?
 
     override init() {
@@ -236,12 +241,6 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
         proofKey = nil
     }
 
-    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .flatMap(\.windows)
-            .first(where: \.isKeyWindow) ?? UIWindow()
-    }
 
     private func restoreSavedProfile() {
         // A cached gamertag alone is not proof of an authenticated Xbox session.
@@ -414,33 +413,31 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
         return hintedURL
     }
 
+    /// Mirrors XStreaming's embedded WebView and ms-xal redirect callback.
     private func openMicrosoftSignIn(_ url: URL) async throws -> URL {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
-            let session = ASWebAuthenticationSession(url: url, callbackURLScheme: Constants.redirectScheme) { [weak self] callback, error in
-                self?.webAuthenticationSession = nil
-                if let error {
-                    if (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin {
-                        continuation.resume(throwing: XboxAuthenticationError.userCancelled)
-                    } else {
-                        continuation.resume(throwing: error)
-                    }
-                    return
-                }
-                guard let callback else {
-                    continuation.resume(throwing: XboxAuthenticationError.invalidRedirect)
-                    return
-                }
-                continuation.resume(returning: callback)
-            }
-            session.presentationContextProvider = self
-            session.prefersEphemeralWebBrowserSession = false
-            webAuthenticationSession = session
-            guard session.start() else {
-                webAuthenticationSession = nil
+            guard authorizationContinuation == nil else {
                 continuation.resume(throwing: XboxAuthenticationError.sessionUnavailable)
                 return
             }
+            authorizationContinuation = continuation
+            authorizationRequest = XboxAuthorizationRequest(url: url)
         }
+    }
+
+    func completeMicrosoftSignIn(_ callbackURL: URL) {
+        guard callbackURL.scheme?.lowercased() == Constants.redirectScheme,
+              let continuation = authorizationContinuation else { return }
+        authorizationContinuation = nil
+        authorizationRequest = nil
+        continuation.resume(returning: callbackURL)
+    }
+
+    func cancelMicrosoftSignIn() {
+        guard let continuation = authorizationContinuation else { return }
+        authorizationContinuation = nil
+        authorizationRequest = nil
+        continuation.resume(throwing: XboxAuthenticationError.userCancelled)
     }
 
     private func requestDeviceToken(using key: XBLProofKey) async throws -> String {
