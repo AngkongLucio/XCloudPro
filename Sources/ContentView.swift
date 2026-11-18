@@ -654,6 +654,7 @@ struct ContentView: View {
         .padding(16).background(ConsolePalette.surface, in: RoundedRectangle(cornerRadius: 14))
     }
 
+    // Shared native picker row for persistent Better xCloud-inspired preferences.
     private func settingsPicker(_ title: String, detail: String, selection: Binding<String>, options: [(String, String)], icon: String) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon).foregroundStyle(ConsolePalette.green).frame(width: 28)
