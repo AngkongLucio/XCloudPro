@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 /// Common signaling contract consumed by the native WebRTC transport.
 /// Cloud Gaming and Console Remote Play use different Xbox session paths,
