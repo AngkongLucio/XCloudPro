@@ -119,7 +119,7 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
     @Published private(set) var cloudTokenExpiry: Date?
     @Published var errorMessage: String?
 
-    private let urlSession: URLSession
+    private let httpClient: XboxHTTPClient
     @Published var authorizationRequest: XboxAuthorizationRequest?
     private var authorizationContinuation: CheckedContinuation<URL, Error>?
     private var proofKey: XBLProofKey?
@@ -130,7 +130,7 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
         configuration.httpShouldSetCookies = true
         configuration.timeoutIntervalForRequest = 30
         configuration.timeoutIntervalForResource = 60
-        self.urlSession = URLSession(configuration: configuration)
+        self.httpClient = XboxHTTPClient(session: URLSession(configuration: configuration))
         super.init()
         restoreSavedProfile()
     }
@@ -680,7 +680,9 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
     }
 
     private func performWithResponse(_ request: URLRequest) async throws -> (Data, URLResponse) {
-        let (data, response) = try await urlSession.data(for: request)
+        let result = try await httpClient.execute(request)
+        let data = result.data
+        let response: URLResponse = result.response
         guard let http = response as? HTTPURLResponse else { throw XboxAuthenticationError.invalidResponse }
         guard (200..<300).contains(http.statusCode) else {
             // Report only safe error metadata. Never include response bodies,
