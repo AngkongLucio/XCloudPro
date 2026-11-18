@@ -172,8 +172,10 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
             statusMessage = "Requesting Xbox Cloud credentials…"
             let web = try await requestMSALXSTS(userToken: xboxUserToken, relyingParty: "http://xboxlive.com")
             let home = try await requestMSALXSTS(userToken: xboxUserToken, relyingParty: "http://gssv.xboxlive.com/", requiresProfileClaims: false)
-            let cloudInfo = try await requestCloudStreamingToken(xstsToken: home.token)
+            // Cloud Gaming is optional: Xbox may deny xgpuweb/xgpuwebf2p
+            // in unsupported markets while xhome Remote Play remains available.
             let homeInfo = try await requestHomeStreamingToken(xstsToken: home.token)
+            let cloudInfo = try? await requestCloudStreamingToken(xstsToken: home.token)
             let homeRegionData = try JSONEncoder().encode(homeInfo.regions)
             try SecureTokenStore.save(homeRegionData.base64EncodedString(), account: "xbl.msal.home-regions")
 
@@ -185,23 +187,33 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
             try SecureTokenStore.save(web.token, account: "xbl.msal.web-xsts")
             try SecureTokenStore.save(home.token, account: "xbl.msal.home-xsts")
             try SecureTokenStore.save(homeInfo.gsToken, account: "xbl.msal.home-gs-token")
-            try SecureTokenStore.save(cloudInfo.gsToken, account: "xbl.cloud-stream-token")
             try SecureTokenStore.save(profile.gamertag, account: "xbl.profile-gamertag")
             try SecureTokenStore.save(profile.id, account: "xbl.profile-xuid")
             try SecureTokenStore.save(profile.userHash, account: "xbl.profile-user-hash")
 
-            cloudTokenExpiry = Date().addingTimeInterval(TimeInterval(min(cloudInfo.durationInSeconds, homeInfo.durationInSeconds)))
+            let tokenLifetime = min(cloudInfo?.durationInSeconds ?? homeInfo.durationInSeconds, homeInfo.durationInSeconds)
+            cloudTokenExpiry = Date().addingTimeInterval(TimeInterval(tokenLifetime))
             try SecureTokenStore.save(String(cloudTokenExpiry!.timeIntervalSince1970), account: "xbl.cloud-token-expiry")
-            availableRegions = cloudInfo.regions
-            try saveRegions(cloudInfo.regions)
-            if let saved = UserDefaults.standard.string(forKey: "xbl.selected-region"),
-               cloudInfo.regions.contains(where: { $0.name == saved }) {
-                selectedRegionName = saved
+            if let cloudInfo {
+                try SecureTokenStore.save(cloudInfo.gsToken, account: "xbl.cloud-stream-token")
+                availableRegions = cloudInfo.regions
+                try saveRegions(cloudInfo.regions)
+                if let saved = UserDefaults.standard.string(forKey: "xbl.selected-region"),
+                   cloudInfo.regions.contains(where: { $0.name == saved }) {
+                    selectedRegionName = saved
+                } else {
+                    selectedRegionName = nil
+                }
             } else {
+                try SecureTokenStore.delete(account: "xbl.cloud-stream-token")
+                try SecureTokenStore.delete(account: "xbl.cloud-regions")
+                availableRegions = []
                 selectedRegionName = nil
             }
             account = profile
-            statusMessage = "Signed in — Microsoft Device Code"
+            statusMessage = cloudInfo == nil
+                ? "Signed in — Xbox Cloud Gaming is unavailable; Remote Play credentials saved"
+                : "Signed in — Microsoft Device Code"
         } catch {
             statusMessage = "Device-code sign-in failed"
             errorMessage = error.localizedDescription
@@ -370,9 +382,9 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
         let xboxUserToken = try await authenticateMicrosoftTokenWithXbox(accessToken)
         try SecureTokenStore.save(xboxUserToken, account: "xbl.msal.xbox-user-token")
         let web = try await requestMSALXSTS(userToken: xboxUserToken, relyingParty: "http://xboxlive.com")
-        let home = try await requestMSALXSTS(userToken: xboxUserToken, relyingParty: "http://gssv.xboxlive.com/")
-        let cloudInfo = try await requestCloudStreamingToken(xstsToken: home.token)
+        let home = try await requestMSALXSTS(userToken: xboxUserToken, relyingParty: "http://gssv.xboxlive.com/", requiresProfileClaims: false)
         let homeInfo = try await requestHomeStreamingToken(xstsToken: home.token)
+        let cloudInfo = try? await requestCloudStreamingToken(xstsToken: home.token)
         let homeRegionData = try JSONEncoder().encode(homeInfo.regions)
         try SecureTokenStore.save(homeRegionData.base64EncodedString(), account: "xbl.msal.home-regions")
         let profile = XboxAccountProfile(id: web.xboxUserID, gamertag: web.gamertag, userHash: web.userHash)
@@ -380,16 +392,26 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
         try SecureTokenStore.save(web.token, account: "xbl.msal.web-xsts")
         try SecureTokenStore.save(home.token, account: "xbl.msal.home-xsts")
         try SecureTokenStore.save(homeInfo.gsToken, account: "xbl.msal.home-gs-token")
-        try SecureTokenStore.save(cloudInfo.gsToken, account: "xbl.cloud-stream-token")
         try SecureTokenStore.save(profile.gamertag, account: "xbl.profile-gamertag")
         try SecureTokenStore.save(profile.id, account: "xbl.profile-xuid")
         try SecureTokenStore.save(profile.userHash, account: "xbl.profile-user-hash")
-        cloudTokenExpiry = Date().addingTimeInterval(TimeInterval(min(cloudInfo.durationInSeconds, homeInfo.durationInSeconds)))
+        let tokenLifetime = min(cloudInfo?.durationInSeconds ?? homeInfo.durationInSeconds, homeInfo.durationInSeconds)
+        cloudTokenExpiry = Date().addingTimeInterval(TimeInterval(tokenLifetime))
         try SecureTokenStore.save(String(cloudTokenExpiry!.timeIntervalSince1970), account: "xbl.cloud-token-expiry")
-        availableRegions = cloudInfo.regions
-        try saveRegions(cloudInfo.regions)
+        if let cloudInfo {
+            try SecureTokenStore.save(cloudInfo.gsToken, account: "xbl.cloud-stream-token")
+            availableRegions = cloudInfo.regions
+            try saveRegions(cloudInfo.regions)
+        } else {
+            try SecureTokenStore.delete(account: "xbl.cloud-stream-token")
+            try SecureTokenStore.delete(account: "xbl.cloud-regions")
+            availableRegions = []
+            selectedRegionName = nil
+        }
         account = profile
-        statusMessage = "Xbox account refreshed"
+        statusMessage = cloudInfo == nil
+            ? "Xbox account refreshed — Cloud Gaming unavailable; Remote Play credentials retained"
+            : "Xbox account refreshed"
     }
 
     func signIn(email: String) async throws {
