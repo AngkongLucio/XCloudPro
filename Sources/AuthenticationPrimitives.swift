@@ -91,11 +91,13 @@ struct XBLProofKey {
         date: Date = Date()
     ) throws -> String {
         let path = url.path
-        // XStreaming computes the Windows timestamp from whole Unix seconds.
-                // Keep this identical to its reference implementation; fractional
-                // sub-second ticks can otherwise produce a different signed message.
-                let unixSeconds = Int64(date.timeIntervalSince1970)
-                let windowsTicks = UInt64(unixSeconds + 11_644_473_600) * 10_000_000
+        // XStreaming's Android XalManager parses the JSON body and serializes
+        // its JsonObject with Gson before signing. Gson sorts object keys.
+        // Keep the wire body untouched, but sign the same canonical JSON bytes.
+        let signingBody = try Self.canonicalJSONBody(body)
+        // XStreaming computes Windows time from whole Unix seconds.
+        let unixSeconds = Int64(date.timeIntervalSince1970)
+        let windowsTicks = UInt64(unixSeconds + 11_644_473_600) * 10_000_000
 
         var signedMessage = Data()
         signedMessage.appendBigEndian(UInt32(1))
@@ -108,7 +110,7 @@ struct XBLProofKey {
         signedMessage.append(0)
         signedMessage.append(contentsOf: authorizationToken.utf8)
         signedMessage.append(0)
-        signedMessage.append(body)
+        signedMessage.append(signingBody)
         signedMessage.append(0)
 
         let signature = try privateKey.signature(for: signedMessage).rawRepresentation
@@ -118,6 +120,19 @@ struct XBLProofKey {
         header.appendBigEndian(windowsTicks)
         header.append(signature)
         return header.base64EncodedString()
+    }
+
+    private static func canonicalJSONBody(_ body: Data) throws -> Data {
+        guard let object = try? JSONSerialization.jsonObject(with: body),
+              JSONSerialization.isValidJSONObject(object) else {
+            return body
+        }
+        // Gson JsonObject serialization in XStreaming uses lexicographically
+        // ordered object members and compact JSON without HTML escaping.
+        return try JSONSerialization.data(
+            withJSONObject: object,
+            options: [.sortedKeys, .withoutEscapingSlashes]
+        )
     }
 }
 
