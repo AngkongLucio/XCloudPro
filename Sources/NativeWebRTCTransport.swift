@@ -36,6 +36,15 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
     private var iceGatheringContinuation: CheckedContinuation<[RTCIceCandidate], Error>?
     private var renderers: [RTCVideoRenderer] = []
     private var openedDataChannels = Set<ObjectIdentifier>()
+    private var preferredVideoWidth = 1920
+    private var preferredVideoHeight = 1080
+    private var preferredMaxFPS = 60
+
+    func setVideoPreference(width: Int, height: Int, maxFPS: Int) {
+        preferredVideoWidth = min(max(width, 640), 1920)
+        preferredVideoHeight = min(max(height, 360), 1080)
+        preferredMaxFPS = min(max(maxFPS, 30), 60)
+    }
 
     func attachControllerManager(_ manager: ControllerManager) {
         controllerManager = manager
@@ -215,9 +224,9 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
             sendControlMessage([
                 "message": "VideoPreference",
                 "type": "VideoPreference",
-                "resolution": ["width": 1920, "height": 1080],
-                "dimensions": ["width": 1920, "height": 1080],
-                "maxFPS": 60
+                "resolution": ["width": preferredVideoWidth, "height": preferredVideoHeight],
+                "dimensions": ["width": preferredVideoWidth, "height": preferredVideoHeight],
+                "maxFPS": preferredMaxFPS
             ])
         case "message":
             messageDataChannel = channel
@@ -509,6 +518,7 @@ extension NativeWebRTCTransport: RTCPeerConnectionDelegate {
 
 struct NativeWebRTCVideoSurface: UIViewRepresentable {
     @ObservedObject var transport: NativeWebRTCTransport
+    @AppStorage("xcloudpro.videoAspect") private var videoAspect = "fit"
 
     final class Coordinator {
         weak var transport: NativeWebRTCTransport?
@@ -522,7 +532,7 @@ struct NativeWebRTCVideoSurface: UIViewRepresentable {
 
     func makeUIView(context: Context) -> RTCMTLVideoView {
         let view = RTCMTLVideoView(frame: .zero)
-        view.videoContentMode = .scaleAspectFit
+        view.videoContentMode = videoAspect == "fill" ? .scaleAspectFill : .scaleAspectFit
         transport.attach(renderer: view)
         return view
     }

@@ -44,6 +44,9 @@ struct ContentView: View {
     @State private var showStreamPlayer = false
     @AppStorage("xcloudpro.haptics") private var hapticsEnabled = true
     @AppStorage("xcloudpro.showNetworkStats") private var showNetworkStats = true
+    @AppStorage("xcloudpro.targetResolution") private var targetResolution = "1080p"
+    @AppStorage("xcloudpro.preferredFPS") private var preferredFPS = "60"
+    @AppStorage("xcloudpro.videoAspect") private var videoAspect = "fit"
 
     private var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0.0"
@@ -485,6 +488,9 @@ struct ContentView: View {
             heading("SETTINGS", subtitle: "Native XCloudPro preferences")
             settingsToggle("Haptic feedback", detail: "Use a light haptic when changing console sections", value: $hapticsEnabled, icon: "iphone.radiowaves.left.and.right")
             settingsToggle("Show stream status badge", detail: "Show the connection badge in the native player", value: $showNetworkStats, icon: "chart.xyaxis.line")
+            settingsPicker("Preferred resolution", detail: "Requests a stream size; Xbox may apply its own limits", selection: $targetResolution, options: [("1080p", "1080p"), ("720p", "720p")], icon: "display")
+            settingsPicker("Preferred frame rate", detail: "Requests the maximum frame rate for the session", selection: $preferredFPS, options: [("60", "60 FPS"), ("30", "30 FPS")], icon: "speedometer")
+            settingsPicker("Video scaling", detail: "Fit preserves the full image; Fill crops to fill the screen", selection: $videoAspect, options: [("fit", "Fit"), ("fill", "Fill")], icon: "aspectratio")
             settingsInfo("App version", value: appVersion, icon: "number")
             settingsInfo("Controller", value: controllerManager.statusText, icon: "gamecontroller")
             settingsInfo("Streaming engine", value: "Xbox Cloud API + native WebRTC", icon: "waveform.path")
@@ -555,6 +561,9 @@ struct ContentView: View {
                 gsToken: credentials.gsToken,
                 osName: "windows",
                 deviceInfoHeader: makeDeviceInfoHeader(),
+                videoWidth: targetResolution == "720p" ? 1280 : 1920,
+                videoHeight: targetResolution == "720p" ? 720 : 1080,
+                maxFPS: Int(preferredFPS) ?? 60,
                 msalUserTokenProvider: { try await authenticationService.cloudTransferToken() }
             )
             if let error = streamCoordinator.lastError {
@@ -641,6 +650,26 @@ struct ContentView: View {
             }
             Spacer()
             Toggle(title, isOn: value).labelsHidden().tint(ConsolePalette.green)
+        }
+        .padding(16).background(ConsolePalette.surface, in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func settingsPicker(_ title: String, detail: String, selection: Binding<String>, options: [(String, String)], icon: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon).foregroundStyle(ConsolePalette.green).frame(width: 28)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.system(size: 13, weight: .semibold))
+                Text(detail).font(.system(size: 10)).foregroundStyle(ConsolePalette.muted)
+            }
+            Spacer(minLength: 8)
+            Picker(title, selection: selection) {
+                ForEach(options, id: \.0) { option in
+                    Text(option.1).tag(option.0)
+                }
+            }
+            .pickerStyle(.menu)
+            .tint(ConsolePalette.green)
+            .labelsHidden()
         }
         .padding(16).background(ConsolePalette.surface, in: RoundedRectangle(cornerRadius: 14))
     }

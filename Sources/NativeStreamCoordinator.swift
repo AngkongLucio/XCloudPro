@@ -32,6 +32,9 @@ final class NativeStreamCoordinator: ObservableObject {
         gsToken: String,
         osName: String,
         deviceInfoHeader: String,
+        videoWidth: Int = 1920,
+        videoHeight: Int = 1080,
+        maxFPS: Int = 60,
         msalUserTokenProvider: @escaping () async throws -> String
     ) async {
         guard !isStarting, !isStreaming, service == nil else { return }
@@ -52,6 +55,7 @@ final class NativeStreamCoordinator: ObservableObject {
                 userTokenProvider: msalUserTokenProvider
             )
 
+            transport.setVideoPreference(width: videoWidth, height: videoHeight, maxFPS: maxFPS)
             try await transport.start(using: cloudService)
             isStarting = false
             cloudService.startKeepAlive(
