@@ -446,8 +446,8 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
     private func requestDeviceToken(using key: XBLProofKey) async throws -> String {
         let url = URL(string: "https://device.auth.xboxlive.com/device/authenticate")!
 
-        // A single bounded retry is allowed for HTTP 500 only. Rebuild the
-        // device identifiers and proof signature so the second request is fresh.
+        // XStreaming retries Device Authenticate on HTTP 400. Keep the retry bounded
+        // so a persistent service error cannot loop indefinitely.
         for attempt in 1...2 {
             let deviceID = UUID().uuidString.uppercased()
             let serialNumber = UUID().uuidString.uppercased()
@@ -465,7 +465,7 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
                 guard case .serverRejected(let statusCode, let details) = error else {
                     throw error
                 }
-                if statusCode == 500 && attempt == 1 {
+                if statusCode == 400 && attempt == 1 {
                     continue
                 }
                 throw XboxAuthenticationError.serverRejected(
@@ -624,7 +624,7 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
         )
     }
 
-    private func signedJSONRequest(url: URL, payload: [String: Any], using key: XBLProofKey, includeContentType: Bool = true) async throws -> Data {
+    private func signedJSONRequest(url: URL, payload: [String: Any], using key: XBLProofKey, includeContentType: Bool = false) async throws -> Data {
         try await signedJSONRequestWithResponse(url: url, payload: payload, using: key, includeContentType: includeContentType).0
     }
 
@@ -646,6 +646,9 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
         if includeContentType {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
+        // Match XStreaming Axios defaults: Accept JSON and leave Content-Type unset
+        // for signed JSON-string bodies.
+        request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
         request.setValue("1", forHTTPHeaderField: "x-xbl-contract-version")
         request.setValue("no-store, must-revalidate, no-cache", forHTTPHeaderField: "Cache-Control")
         request.setValue(signature, forHTTPHeaderField: "Signature")
