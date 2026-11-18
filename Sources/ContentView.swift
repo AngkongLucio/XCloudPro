@@ -55,7 +55,11 @@ struct ContentView: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in
+        Group {
+            if authenticationService.account == nil {
+                loginGate
+            } else {
+                GeometryReader { geometry in
             HStack(spacing: 0) {
                 sidebar(compact: geometry.size.width < 700)
                 Rectangle().fill(.white.opacity(0.07)).frame(width: 1)
@@ -79,7 +83,9 @@ struct ContentView: View {
                     }
                 }
             }
-            .background(ConsolePalette.background)
+                    .background(ConsolePalette.background)
+                }
+            }
         }
         .background(ConsolePalette.background.ignoresSafeArea())
         .preferredColorScheme(.dark)
@@ -106,6 +112,112 @@ struct ContentView: View {
             Button("OK", role: .cancel) { }
         } message: {
             Text(authenticationService.errorMessage ?? "Sign-in could not be completed.")
+        }
+    }
+
+    private var loginGate: some View {
+        GeometryReader { geometry in
+            ZStack {
+                ConsolePalette.background.ignoresSafeArea()
+                Circle()
+                    .fill(ConsolePalette.green.opacity(0.10))
+                    .frame(width: 360, height: 360)
+                    .blur(radius: 90)
+                    .offset(x: geometry.size.width * 0.28, y: -geometry.size.height * 0.30)
+
+                VStack(spacing: 0) {
+                    Spacer(minLength: 24)
+                    Image(systemName: "xbox.logo")
+                        .font(.system(size: 48, weight: .bold))
+                        .foregroundStyle(ConsolePalette.green)
+                        .padding(.bottom, 14)
+                    Text("XCLOUD PRO")
+                        .font(.system(size: 25, weight: .black, design: .rounded))
+                        .tracking(2.2)
+                        .foregroundStyle(.white)
+                    Text("SIGN IN TO CONTINUE")
+                        .font(.system(size: 10, weight: .black))
+                        .tracking(2.0)
+                        .foregroundStyle(ConsolePalette.muted)
+                        .padding(.top, 8)
+
+                    VStack(alignment: .leading, spacing: 15) {
+                        VStack(alignment: .leading, spacing: 7) {
+                            Text("MICROSOFT EMAIL")
+                                .font(.system(size: 9, weight: .black))
+                                .tracking(1.1)
+                                .foregroundStyle(ConsolePalette.muted)
+                            TextField("name@example.com", text: $microsoftEmail)
+                                .font(.system(size: 14, weight: .medium))
+                                .keyboardType(.emailAddress)
+                                .textContentType(.emailAddress)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .padding(.horizontal, 13)
+                                .frame(height: 48)
+                                .background(ConsolePalette.elevated, in: RoundedRectangle(cornerRadius: 11))
+                                .disabled(authenticationService.isAuthenticating)
+                        }
+
+                        Button {
+                            Task {
+                                do {
+                                    try await authenticationService.signIn(email: microsoftEmail)
+                                } catch {
+                                    showAuthenticationError = true
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 9) {
+                                if authenticationService.isAuthenticating {
+                                    ProgressView().tint(.black)
+                                } else {
+                                    Image(systemName: "xbox.logo")
+                                }
+                                Text(authenticationService.isAuthenticating ? "CONNECTING TO MICROSOFT…" : "SIGN IN WITH MICROSOFT")
+                                    .font(.system(size: 11, weight: .black))
+                                    .tracking(0.8)
+                            }
+                            .foregroundStyle(.black)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 48)
+                            .background(ConsolePalette.green, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(
+                            authenticationService.isAuthenticating ||
+                            !microsoftEmail.trimmingCharacters(in: .whitespacesAndNewlines).contains("@")
+                        )
+
+                        Text("Sign in with your Microsoft account to unlock the XCloud Pro console. Your password and verification are handled only in Microsoft's secure sign-in window.")
+                            .font(.system(size: 10))
+                            .foregroundStyle(ConsolePalette.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(18)
+                    .frame(maxWidth: 420)
+                    .background(ConsolePalette.surface, in: RoundedRectangle(cornerRadius: 18))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 18)
+                            .stroke(.white.opacity(0.07), lineWidth: 1)
+                    }
+                    .padding(.horizontal, 22)
+                    .padding(.top, 30)
+
+                    Text(authenticationService.statusMessage.uppercased())
+                        .font(.system(size: 9, weight: .bold))
+                        .tracking(0.8)
+                        .foregroundStyle(ConsolePalette.muted)
+                        .padding(.top, 18)
+                    Spacer(minLength: 24)
+                    Text("XBOX CLOUD GAMING • NATIVE CONSOLE")
+                        .font(.system(size: 8, weight: .bold))
+                        .tracking(1.2)
+                        .foregroundStyle(ConsolePalette.muted.opacity(0.65))
+                        .padding(.bottom, 18)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
     }
 
