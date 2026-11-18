@@ -611,10 +611,13 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
     /// Re-request the Cloud Gaming offering independently from Microsoft sign-in.
     /// Regions are populated only from Xbox's authenticated offeringSettings response.
     func retryMSALCloudCredentials() async throws {
+        guard !isAuthenticating else { return }
         guard let homeXSTS = try SecureTokenStore.load(account: "xbl.msal.home-xsts"),
               !homeXSTS.isEmpty else {
             throw XboxAuthenticationError.missingValue("Xbox home XSTS token; sign in again")
         }
+        isAuthenticating = true
+        defer { isAuthenticating = false }
         do {
             let cloudInfo = try await requestCloudStreamingToken(xstsToken: homeXSTS)
             try SecureTokenStore.save(cloudInfo.gsToken, account: "xbl.cloud-stream-token")
