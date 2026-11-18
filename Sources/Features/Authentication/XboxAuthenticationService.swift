@@ -324,13 +324,21 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
             throw XboxAuthenticationError.missingValue("Xbox Sisu credentials; sign in again")
         }
         let key = try XBLProofKey(rawRepresentation: keyData)
-        let webXSTS = try await requestXSTS(
+        guard let deviceToken = try SecureTokenStore.load(account: "xbl.device-token"),
+              let titleToken = try SecureTokenStore.load(account: "xbl.sisu-title-token") else {
+            throw XboxAuthenticationError.missingValue("Xbox device and title tokens; sign in again")
+        }
+        let webXSTS = try await requestConsoleXSTS(
             userToken: sisuUserToken,
+            deviceToken: deviceToken,
+            titleToken: titleToken,
             relyingParty: "http://xboxlive.com",
             using: key
         )
-        let homeXSTS = try await requestXSTS(
+        let homeXSTS = try await requestConsoleXSTS(
             userToken: sisuUserToken,
+            deviceToken: deviceToken,
+            titleToken: titleToken,
             relyingParty: "http://gssv.xboxlive.com/",
             using: key
         )
@@ -662,6 +670,30 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
         let payload: [String: Any] = [
             "Properties": [
                 "SandboxId": Constants.retailSandbox,
+                "UserTokens": [userToken]
+            ],
+            "RelyingParty": relyingParty,
+            "TokenType": "JWT"
+        ]
+        let data = try await signedJSONRequest(url: url, payload: payload, using: key)
+        return try requiredString(data, path: ["Token"])
+    }
+
+    /// Console discovery/home streaming uses the full Sisu token set in XSTS.
+    /// Kept separate from the existing Cloud Gaming XSTS payload.
+    private func requestConsoleXSTS(
+        userToken: String,
+        deviceToken: String,
+        titleToken: String,
+        relyingParty: String,
+        using key: XBLProofKey
+    ) async throws -> String {
+        let url = URL(string: "https://xsts.auth.xboxlive.com/xsts/authorize")!
+        let payload: [String: Any] = [
+            "Properties": [
+                "SandboxId": Constants.retailSandbox,
+                "DeviceToken": deviceToken,
+                "TitleToken": titleToken,
                 "UserTokens": [userToken]
             ],
             "RelyingParty": relyingParty,
