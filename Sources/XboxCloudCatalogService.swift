@@ -21,7 +21,7 @@ final class XboxCloudCatalogService {
     private let gsToken: String
     private let market: String
     private let language: String
-    private let urlSession: URLSession
+    private let httpClient: XboxHTTPClient
 
     init(
         regionBaseURL: URL,
@@ -38,7 +38,7 @@ final class XboxCloudCatalogService {
         self.gsToken = gsToken
         self.market = market
         self.language = language
-        self.urlSession = urlSession
+        self.httpClient = XboxHTTPClient(session: urlSession)
     }
 
     func fetchCloudGames() async throws -> [CloudGame] {
@@ -140,7 +140,9 @@ final class XboxCloudCatalogService {
     }
 
     private func send<T: Decodable>(_ request: URLRequest) async throws -> T {
-        let (data, response) = try await urlSession.data(for: request)
+        let result = try await httpClient.execute(request)
+        let data = result.data
+        let response: URLResponse = result.response
         guard let http = response as? HTTPURLResponse else {
             throw XboxCloudCatalogError.invalidResponse
         }
