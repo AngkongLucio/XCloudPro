@@ -407,7 +407,7 @@ struct ContentView: View {
                         .padding(.horizontal, 13)
                         .frame(height: 46)
                         .background(ConsolePalette.elevated, in: RoundedRectangle(cornerRadius: 11))
-                        .disabled(authenticationService.isAuthenticating || authenticationService.account != nil || microsoftEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .disabled(authenticationService.isAuthenticating || authenticationService.account != nil)
                 }
 
                 Button {
@@ -433,7 +433,11 @@ struct ContentView: View {
                     .background(ConsolePalette.green, in: Capsule())
                 }
                 .buttonStyle(.plain)
-                .disabled(authenticationService.isAuthenticating || authenticationService.account != nil)
+                .disabled(
+                    authenticationService.isAuthenticating ||
+                    authenticationService.account != nil ||
+                    !microsoftEmail.trimmingCharacters(in: .whitespacesAndNewlines).contains("@")
+                )
 
                 if authenticationService.account != nil {
                     Label("Xbox account connected", systemImage: "checkmark.seal.fill")
