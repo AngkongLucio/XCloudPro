@@ -48,7 +48,7 @@ enum CloudSessionServiceError: Error, LocalizedError {
 final class XboxCloudSessionService {
     private let baseURL: URL
     private let gsToken: String
-    private let urlSession: URLSession
+    private let httpClient: XboxHTTPClient
     private var keepAliveTask: Task<Void, Never>?
     private(set) var activeSessionID: String?
 
@@ -58,7 +58,7 @@ final class XboxCloudSessionService {
         }
         self.baseURL = baseURL
         self.gsToken = gsToken
-        self.urlSession = urlSession
+        self.httpClient = XboxHTTPClient(session: urlSession)
     }
 
     /// Starts a cloud game by Xbox title ID, waits for provisioning, and returns
@@ -283,7 +283,9 @@ final class XboxCloudSessionService {
 
     private func fetchExchangeResponse(path: String) async throws -> String? {
         let request = makeRequest(path: path, method: "GET")
-        let (data, response) = try await urlSession.data(for: request)
+        let result = try await httpClient.execute(request)
+        let data = result.data
+        let response: URLResponse = result.response
         guard let http = response as? HTTPURLResponse else {
             throw CloudSessionServiceError.invalidResponse
         }
@@ -374,7 +376,9 @@ final class XboxCloudSessionService {
     /// The Xbox exchange endpoints may return an empty response while signaling
     /// is pending. Decode only once exchangeResponse is actually present.
     private func sendExchange(_ request: URLRequest) async throws -> String? {
-        let (data, response) = try await urlSession.data(for: request)
+        let result = try await httpClient.execute(request)
+        let data = result.data
+        let response: URLResponse = result.response
         guard let http = response as? HTTPURLResponse else {
             throw CloudSessionServiceError.invalidResponse
         }
@@ -389,7 +393,9 @@ final class XboxCloudSessionService {
     }
 
     private func send<T: Decodable>(_ request: URLRequest) async throws -> T {
-        let (data, response) = try await urlSession.data(for: request)
+        let result = try await httpClient.execute(request)
+        let data = result.data
+        let response: URLResponse = result.response
         guard let http = response as? HTTPURLResponse else {
             throw CloudSessionServiceError.invalidResponse
         }
