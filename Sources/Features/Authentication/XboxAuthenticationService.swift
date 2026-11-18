@@ -174,6 +174,8 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
             let home = try await requestMSALXSTS(userToken: xboxUserToken, relyingParty: "http://gssv.xboxlive.com/")
             let cloudInfo = try await requestCloudStreamingToken(xstsToken: home.token)
             let homeInfo = try await requestHomeStreamingToken(xstsToken: home.token)
+            let homeRegionData = try JSONEncoder().encode(homeInfo.regions)
+            try SecureTokenStore.save(homeRegionData.base64EncodedString(), account: "xbl.msal.home-regions")
 
             let profile = XboxAccountProfile(
                 id: web.xboxUserID,
@@ -368,6 +370,8 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
         let home = try await requestMSALXSTS(userToken: xboxUserToken, relyingParty: "http://gssv.xboxlive.com/")
         let cloudInfo = try await requestCloudStreamingToken(xstsToken: home.token)
         let homeInfo = try await requestHomeStreamingToken(xstsToken: home.token)
+        let homeRegionData = try JSONEncoder().encode(homeInfo.regions)
+        try SecureTokenStore.save(homeRegionData.base64EncodedString(), account: "xbl.msal.home-regions")
         let profile = XboxAccountProfile(id: web.xboxUserID, gamertag: web.gamertag, userHash: web.userHash)
 
         try SecureTokenStore.save(web.token, account: "xbl.msal.web-xsts")
@@ -584,10 +588,18 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
                   let userHash = account?.userHash else {
                 throw XboxAuthenticationError.missingValue("MSAL Xbox Remote Play credentials")
             }
+            let homeRegions: [XboxCloudRegion]
+            if let raw = try SecureTokenStore.load(account: "xbl.msal.home-regions"),
+               let data = Data(base64Encoded: raw),
+               let decoded = try? JSONDecoder().decode([XboxCloudRegion].self, from: data) {
+                homeRegions = decoded
+            } else {
+                homeRegions = availableRegions
+            }
             return XboxConsoleRemotePlayCredentials(
                 webToken: web,
                 homeGSToken: home,
-                regions: availableRegions,
+                regions: homeRegions,
                 userHash: userHash
             )
         }
