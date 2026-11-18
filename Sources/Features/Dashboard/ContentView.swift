@@ -53,36 +53,32 @@ struct ContentView: View {
 
     var body: some View {
         Group {
-            if authenticationService.account == nil {
-                loginGate
-            } else {
-                GeometryReader { geometry in
-            HStack(spacing: 0) {
-                sidebar(compact: geometry.size.width < 700)
-                Rectangle().fill(.white.opacity(0.07)).frame(width: 1)
-                VStack(spacing: 0) {
-                    topBar
-                    ScrollView(showsIndicators: false) {
-                        Group {
-                            switch selectedTab {
-                            case .home: homePage
-                            case .games: gamesPage
-                            case .console: consolePage
-                            case .discover: discoverPage
-                            case .settings: settingsPage
-                            case .account: accountPage
+            GeometryReader { geometry in
+                HStack(spacing: 0) {
+                    sidebar(compact: geometry.size.width < 700)
+                    Rectangle().fill(.white.opacity(0.07)).frame(width: 1)
+                    VStack(spacing: 0) {
+                        topBar
+                        ScrollView(showsIndicators: false) {
+                            Group {
+                                switch selectedTab {
+                                case .home: homePage
+                                case .games: gamesPage
+                                case .console: consolePage
+                                case .discover: discoverPage
+                                case .settings: settingsPage
+                                case .account: accountPage
+                                }
                             }
+                            .frame(maxWidth: 1120, alignment: .leading)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.horizontal, geometry.size.width < 700 ? 18 : 34)
+                            .padding(.top, 24)
+                            .padding(.bottom, 42)
                         }
-                        .frame(maxWidth: 1120, alignment: .leading)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.horizontal, geometry.size.width < 700 ? 18 : 34)
-                        .padding(.top, 24)
-                        .padding(.bottom, 42)
                     }
                 }
-            }
-                    .background(ConsolePalette.background)
-                }
+                .background(ConsolePalette.background)
             }
         }
         .background(ConsolePalette.background.ignoresSafeArea())
@@ -485,6 +481,19 @@ struct ContentView: View {
     private var consolePage: some View {
         VStack(alignment: .leading, spacing: 20) {
             heading("XBOX CONSOLE REMOTE PLAY", subtitle: "Stream a registered Xbox One or Xbox Series S/X console to this iPad")
+            if authenticationService.account == nil {
+                statusPanel
+                Button { selectedTab = .account } label: {
+                    Label("CONNECT MICROSOFT ACCOUNT", systemImage: "person.crop.circle.badge.plus")
+                        .font(.system(size: 11, weight: .black))
+                        .foregroundStyle(.black)
+                        .frame(maxWidth: .infinity).padding(15)
+                        .background(ConsolePalette.green, in: RoundedRectangle(cornerRadius: 14))
+                }
+                .buttonStyle(.plain)
+                Text("Remote Play discovery needs an Xbox account. You can still browse the app and change settings without signing in.")
+                    .font(.system(size: 10)).foregroundStyle(ConsolePalette.muted)
+            } else {
             HStack {
                 Label("Xbox Home Streaming", systemImage: "antenna.radiowaves.left.and.right")
                     .font(.system(size: 10, weight: .semibold))
@@ -567,6 +576,7 @@ struct ContentView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(14)
                 .background(ConsolePalette.surface, in: RoundedRectangle(cornerRadius: 12))
+            }
         }
     }
 
@@ -738,7 +748,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("NATIVE STREAMING ENGINE")
                     .font(.system(size: 10, weight: .black)).tracking(1.1)
-                Text("Sign in, then open My Games to start a native cloud session.")
+                Text("Browse your gaming space. Connect a Microsoft account from Account when you want to load games or start streaming.")
                     .font(.system(size: 11)).foregroundStyle(ConsolePalette.muted)
             }
             Spacer(minLength: 0)
