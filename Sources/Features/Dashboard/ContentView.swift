@@ -44,6 +44,7 @@ struct ContentView: View {
     @AppStorage("xcloudpro.targetResolution") private var targetResolution = "1080p"
     @AppStorage("xcloudpro.preferredFPS") private var preferredFPS = "60"
     @AppStorage("xcloudpro.videoAspect") private var videoAspect = "fit"
+    @AppStorage("xcloudpro.regionBypass") private var regionBypass = "off"
 
     private var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0.0"
@@ -822,6 +823,20 @@ struct ContentView: View {
     private var settingsPage: some View {
         VStack(alignment: .leading, spacing: 18) {
             heading("SETTINGS", subtitle: "Native XCloudPro preferences")
+            settingsPicker(
+                "Bypass region restriction",
+                detail: "Better xCloud-style forwarded-IP hint. Xbox may still deny Cloud Gaming access.",
+                selection: $regionBypass,
+                options: [
+                    ("off", "Off"),
+                    ("br", "Brazil"),
+                    ("jp", "Japan"),
+                    ("kr", "Korea"),
+                    ("pl", "Poland"),
+                    ("us", "United States")
+                ],
+                icon: "globe"
+            )
             settingsToggle("Haptic feedback", detail: "Use a light haptic when changing app sections", value: $hapticsEnabled, icon: "iphone.radiowaves.left.and.right")
             settingsToggle("Show stream status badge", detail: "Show the connection badge in the native player", value: $showNetworkStats, icon: "chart.xyaxis.line")
             settingsPicker("Preferred resolution", detail: "Requests a stream size; Xbox may apply its own limits", selection: $targetResolution, options: [("1080p", "1080p"), ("720p", "720p")], icon: "display")
