@@ -36,7 +36,7 @@ struct ContentView: View {
     @State private var showAuthenticationError = false
     @State private var microsoftEmail = ""
     @State private var showXboxWebsiteLogin = false
-    @State private var websiteLoginStatus = "Not checked yet"
+    @State private var websiteLoginStatus = "Waiting for Microsoft sign-in"
     @StateObject private var streamCoordinator = NativeStreamCoordinator()
     @State private var cloudGames: [CloudGame] = []
     @State private var isLoadingGames = false
@@ -143,14 +143,14 @@ struct ContentView: View {
                         .font(.system(size: 25, weight: .black, design: .rounded))
                         .tracking(2.2)
                         .foregroundStyle(.white)
-                    Text("SIGN IN WITH THE OFFICIAL XBOX WEBSITE")
+                    Text("OFFICIAL MICROSOFT ACCOUNT SIGN-IN")
                         .font(.system(size: 10, weight: .black))
                         .tracking(1.5)
                         .foregroundStyle(ConsolePalette.muted)
                         .padding(.top, 8)
 
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("Your Microsoft account sign-in opens on xbox.com/play. XCloud Pro does not collect or store your Microsoft password.")
+                        Text("Sign in securely on the official Microsoft page. Your password stays with Microsoft; XCloudPro does not collect it.")
                             .font(.system(size: 12))
                             .foregroundStyle(ConsolePalette.muted)
                             .fixedSize(horizontal: false, vertical: true)
@@ -160,7 +160,7 @@ struct ContentView: View {
                         } label: {
                             HStack(spacing: 9) {
                                 Image(systemName: "globe")
-                                Text("SIGN IN ON XBOX.COM")
+                                Text("SIGN IN WITH MICROSOFT")
                                     .font(.system(size: 11, weight: .black))
                                     .tracking(0.8)
                             }
@@ -185,7 +185,7 @@ struct ContentView: View {
                         .padding(12)
                         .background(ConsolePalette.elevated, in: RoundedRectangle(cornerRadius: 10))
 
-                        Text("Important: detecting website cookies does not yet prove Xbox authentication or create the native cloud-streaming token. This build is a sign-in/session compatibility test; the native console stays locked until a valid native Xbox session is available.")
+                        Text("After Microsoft returns to XCloudPro, the app will validate the Xbox Cloud session. Your profile and game library will appear only after the native Xbox credentials are confirmed.")
                             .font(.system(size: 10))
                             .foregroundStyle(ConsolePalette.muted)
                             .fixedSize(horizontal: false, vertical: true)
@@ -339,7 +339,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 14) {
                 Text("WELCOME TO XCLOUDPRO")
                     .font(.system(size: 10, weight: .black)).tracking(2.2).foregroundStyle(ConsolePalette.green)
-                Text("Your games.\nYour console.")
+                Text("Your games.\nYour cloud.")
                     .font(.system(size: 38, weight: .bold, design: .rounded))
                     .minimumScaleFactor(0.7).lineLimit(2)
                 Text("A native Xbox-inspired home for cloud gaming.")
@@ -598,7 +598,7 @@ struct ContentView: View {
     private var settingsPage: some View {
         VStack(alignment: .leading, spacing: 18) {
             heading("SETTINGS", subtitle: "Native XCloudPro preferences")
-            settingsToggle("Haptic feedback", detail: "Use a light haptic when changing console sections", value: $hapticsEnabled, icon: "iphone.radiowaves.left.and.right")
+            settingsToggle("Haptic feedback", detail: "Use a light haptic when changing app sections", value: $hapticsEnabled, icon: "iphone.radiowaves.left.and.right")
             settingsToggle("Show stream status badge", detail: "Show the connection badge in the native player", value: $showNetworkStats, icon: "chart.xyaxis.line")
             settingsPicker("Preferred resolution", detail: "Requests a stream size; Xbox may apply its own limits", selection: $targetResolution, options: [("1080p", "1080p"), ("720p", "720p")], icon: "display")
             settingsPicker("Preferred frame rate", detail: "Requests the maximum frame rate for the session", selection: $preferredFPS, options: [("60", "60 FPS"), ("30", "30 FPS")], icon: "speedometer")
