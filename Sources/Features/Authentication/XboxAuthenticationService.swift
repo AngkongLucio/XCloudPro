@@ -492,26 +492,45 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
                 userHash: sisu.userHash
             )
 
-            statusMessage = "Preparing Xbox Cloud Gaming…"
+            statusMessage = "Requesting Xbox Home / Remote Play credentials…"
             let streamingXSTS = try await requestXSTS(userToken: sisu.userToken, relyingParty: "http://gssv.xboxlive.com/", using: key)
-            let streamInfo = try await requestCloudStreamingToken(xstsToken: streamingXSTS)
-            try SecureTokenStore.save(streamInfo.gsToken, account: "xbl.cloud-stream-token")
-            cloudTokenExpiry = Date().addingTimeInterval(TimeInterval(streamInfo.durationInSeconds))
-            try SecureTokenStore.save(String(cloudTokenExpiry!.timeIntervalSince1970), account: "xbl.cloud-token-expiry")
-            availableRegions = streamInfo.regions
-            try saveRegions(streamInfo.regions)
-            // Keep the user's manual region choice across sign-ins. Nil means Xbox default.
-            if let savedRegionName = UserDefaults.standard.string(forKey: "xbl.selected-region"),
-               streamInfo.regions.contains(where: { $0.name == savedRegionName }) {
-                selectedRegionName = savedRegionName
+            // Match XStreaming: xhome is mandatory; Cloud Gaming is an optional offering.
+            let homeInfo = try await requestHomeStreamingToken(xstsToken: streamingXSTS)
+            statusMessage = "Checking Xbox Cloud Gaming offering…"
+            let cloudInfo = try? await requestCloudStreamingToken(xstsToken: streamingXSTS)
+
+            try SecureTokenStore.save(streamingXSTS, account: "xbl.msal.home-xsts")
+            try SecureTokenStore.save(homeInfo.gsToken, account: "xbl.msal.home-gs-token")
+            let homeRegionData = try JSONEncoder().encode(homeInfo.regions)
+            try SecureTokenStore.save(homeRegionData.base64EncodedString(), account: "xbl.msal.home-regions")
+            if let cloudInfo {
+                try SecureTokenStore.save(cloudInfo.gsToken, account: "xbl.cloud-stream-token")
+                availableRegions = cloudInfo.regions
+                try saveRegions(cloudInfo.regions)
+                if let savedRegionName = UserDefaults.standard.string(forKey: "xbl.selected-region"),
+                   cloudInfo.regions.contains(where: { $0.name == savedRegionName }) {
+                    selectedRegionName = savedRegionName
+                } else {
+                    selectedRegionName = nil
+                }
+                cloudAvailabilityMessage = nil
             } else {
+                try SecureTokenStore.delete(account: "xbl.cloud-stream-token")
+                try SecureTokenStore.delete(account: "xbl.cloud-regions")
+                availableRegions = []
                 selectedRegionName = nil
+                cloudAvailabilityMessage = "Xbox accepted your sign-in and Home Remote Play access, but denied both Cloud Gaming offerings (xgpuweb and xgpuwebf2p)."
             }
+            let tokenLifetime = min(cloudInfo?.durationInSeconds ?? homeInfo.durationInSeconds, homeInfo.durationInSeconds)
+            cloudTokenExpiry = Date().addingTimeInterval(TimeInterval(tokenLifetime))
+            try SecureTokenStore.save(String(cloudTokenExpiry!.timeIntervalSince1970), account: "xbl.cloud-token-expiry")
             try SecureTokenStore.save(profile.gamertag, account: "xbl.profile-gamertag")
             try SecureTokenStore.save(profile.id, account: "xbl.profile-xuid")
             try SecureTokenStore.save(profile.userHash, account: "xbl.profile-user-hash")
             account = profile
-            statusMessage = "Signed in — Xbox Cloud token ready"
+            statusMessage = cloudInfo == nil
+                ? "Signed in — Remote Play ready; Cloud Gaming unavailable"
+                : "Signed in — Remote Play and Cloud Gaming ready"
         } catch {
             statusMessage = "Sign-in failed"
             errorMessage = error.localizedDescription
@@ -668,9 +687,9 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
                 userHash: userHash
             )
         }
-        let cloudToken = try SecureTokenStore.load(account: "xbl.cloud-stream-token")
+        let homeToken = try SecureTokenStore.load(account: "xbl.msal.home-gs-token")
         let tokenIsFresh = (cloudTokenExpiry ?? .distantPast).timeIntervalSinceNow > 120
-        if cloudToken == nil || !tokenIsFresh {
+        if homeToken == nil || !tokenIsFresh {
             try await refreshCloudCredentials()
         }
 
@@ -822,19 +841,37 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
             relyingParty: "http://gssv.xboxlive.com/",
             using: key
         )
-        let streamInfo = try await requestCloudStreamingToken(xstsToken: xsts)
-        try SecureTokenStore.save(streamInfo.gsToken, account: "xbl.cloud-stream-token")
-        cloudTokenExpiry = Date().addingTimeInterval(TimeInterval(streamInfo.durationInSeconds))
-        try SecureTokenStore.save(String(cloudTokenExpiry!.timeIntervalSince1970), account: "xbl.cloud-token-expiry")
-        availableRegions = streamInfo.regions
-        try saveRegions(streamInfo.regions)
-        if let selectedRegionName,
-           !streamInfo.regions.contains(where: { $0.name == selectedRegionName }) {
-            // The selected region disappeared from the refreshed Xbox offering list.
-            // Return to automatic/default instead of silently selecting another region.
-            self.selectedRegionName = nil
+        // Keep Home Remote Play independent from Cloud Gaming entitlement.
+        let homeInfo = try await requestHomeStreamingToken(xstsToken: xsts)
+        try SecureTokenStore.save(xsts, account: "xbl.msal.home-xsts")
+        try SecureTokenStore.save(homeInfo.gsToken, account: "xbl.msal.home-gs-token")
+        let homeRegionData = try JSONEncoder().encode(homeInfo.regions)
+        try SecureTokenStore.save(homeRegionData.base64EncodedString(), account: "xbl.msal.home-regions")
+
+        // XStreaming attempts xgpuweb, then xgpuwebf2p; both failures are non-fatal.
+        let cloudInfo = try? await requestCloudStreamingToken(xstsToken: xsts)
+        if let cloudInfo {
+            try SecureTokenStore.save(cloudInfo.gsToken, account: "xbl.cloud-stream-token")
+            availableRegions = cloudInfo.regions
+            try saveRegions(cloudInfo.regions)
+            if let selectedRegionName,
+               !cloudInfo.regions.contains(where: { $0.name == selectedRegionName }) {
+                self.selectedRegionName = nil
+            }
+            cloudAvailabilityMessage = nil
+        } else {
+            try SecureTokenStore.delete(account: "xbl.cloud-stream-token")
+            try SecureTokenStore.delete(account: "xbl.cloud-regions")
+            availableRegions = []
+            selectedRegionName = nil
+            cloudAvailabilityMessage = "Xbox Home access is active, but Cloud Gaming is unavailable for this account or region."
         }
-        statusMessage = "Xbox Cloud credentials refreshed"
+        let lifetime = min(cloudInfo?.durationInSeconds ?? homeInfo.durationInSeconds, homeInfo.durationInSeconds)
+        cloudTokenExpiry = Date().addingTimeInterval(TimeInterval(lifetime))
+        try SecureTokenStore.save(String(cloudTokenExpiry!.timeIntervalSince1970), account: "xbl.cloud-token-expiry")
+        statusMessage = cloudInfo == nil
+            ? "Xbox Home credentials refreshed — Cloud Gaming unavailable"
+            : "Xbox Home and Cloud credentials refreshed"
     }
 
     private func refreshUserToken(_ refreshToken: String) async throws -> UserOAuthToken {
