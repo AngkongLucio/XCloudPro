@@ -566,8 +566,16 @@ final class XboxAuthenticationService: NSObject, ObservableObject, ASWebAuthenti
         let (data, response) = try await urlSession.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw XboxAuthenticationError.invalidResponse }
         guard (200..<300).contains(http.statusCode) else {
-            let message = (try? jsonObject(data)["message"] as? String) ?? "The Xbox service rejected the request."
-            throw XboxAuthenticationError.serverRejected(http.statusCode, message)
+            // Identify the failing service endpoint without logging request bodies,
+            // authorization headers, or any account/token material.
+            let endpoint = "\(request.url?.host ?? "unknown-host")\(request.url?.path ?? "")"
+            let message = (try? jsonObject(data)["message"] as? String)
+                ?? (try? jsonObject(data)["Message"] as? String)
+                ?? "The Xbox service rejected the request."
+            throw XboxAuthenticationError.serverRejected(
+                http.statusCode,
+                "\(endpoint): \(message)"
+            )
         }
         return (data, response)
     }
