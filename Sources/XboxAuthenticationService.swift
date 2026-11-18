@@ -93,7 +93,7 @@ enum XboxAuthenticationError: LocalizedError {
 /// Native Microsoft/Xbox XAL sign-in. Protocol constants follow the public
 /// XStreaming iOS authentication reference; no password is collected by XCloudPro.
 @MainActor
-final class XboxAuthenticationService: NSObject, ObservableObject, NSObjectProtocol {
+final class XboxAuthenticationService: NSObject, ObservableObject {
     private enum Constants {
         static let appID = "000000004c20a908"
         static let titleID = "328178078"
