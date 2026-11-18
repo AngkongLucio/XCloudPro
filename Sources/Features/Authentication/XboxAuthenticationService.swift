@@ -75,6 +75,7 @@ enum XboxAuthenticationError: LocalizedError {
     case stateMismatch
     case userCancelled
     case sessionUnavailable
+    case deviceCodeExpired
 
     var errorDescription: String? {
         switch self {
@@ -86,6 +87,7 @@ enum XboxAuthenticationError: LocalizedError {
         case .stateMismatch: return "The sign-in state did not match. Please try again."
         case .userCancelled: return "Microsoft sign-in was cancelled."
         case .sessionUnavailable: return "The secure Microsoft sign-in window could not be opened."
+        case .deviceCodeExpired: return "The Microsoft device code expired. Start sign-in again."
         }
     }
 }
@@ -101,6 +103,8 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
         static let redirectScheme = "ms-xal-000000004c20a908"
         static let userScope = "service::user.auth.xboxlive.com::MBI_SSL"
         static let retailSandbox = "RETAIL"
+        static let msalClientID = "1f907974-e22b-4810-a9de-d9647380c97e"
+        static let msalScopes = "xboxlive.signin openid profile offline_access"
     }
 
     @Published private(set) var account: XboxAccountProfile?
@@ -121,6 +125,8 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
 
     private let httpClient: XboxHTTPClient
     @Published var authorizationRequest: XboxAuthorizationRequest?
+    @Published private(set) var deviceCodeRequest: MicrosoftDeviceCode?
+    private var deviceCodeCancelled = false
     private var authorizationContinuation: CheckedContinuation<URL, Error>?
     private var proofKey: XBLProofKey?
 
@@ -133,6 +139,250 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
         self.httpClient = XboxHTTPClient(session: URLSession(configuration: configuration))
         super.init()
         restoreSavedProfile()
+    }
+
+
+    /// XStreaming-style Microsoft Device Code sign-in. This path avoids the
+    /// legacy XAL device-auth bootstrap and never asks the app to handle a password.
+    func signInWithDeviceCode() async throws {
+        guard !isAuthenticating else { return }
+        isAuthenticating = true
+        deviceCodeCancelled = false
+        errorMessage = nil
+        statusMessage = "Requesting Microsoft device code…"
+        defer {
+            isAuthenticating = false
+            deviceCodeRequest = nil
+        }
+
+        do {
+            let challenge = try await requestMicrosoftDeviceCode()
+            deviceCodeRequest = challenge
+            statusMessage = "Enter the code on Microsoft's device-login page"
+            await UIApplication.shared.open(challenge.verificationURL)
+
+            let msaToken = try await pollMicrosoftDeviceCode(challenge)
+            try SecureTokenStore.save(msaToken.accessToken, account: "xbl.msal.access-token")
+            try SecureTokenStore.save(msaToken.refreshToken, account: "xbl.msal.refresh-token")
+
+            statusMessage = "Exchanging Microsoft token for Xbox authorization…"
+            let xboxUserToken = try await authenticateMicrosoftTokenWithXbox(msaToken.accessToken)
+            try SecureTokenStore.save(xboxUserToken, account: "xbl.msal.xbox-user-token")
+
+            statusMessage = "Requesting Xbox Cloud credentials…"
+            let web = try await requestMSALXSTS(userToken: xboxUserToken, relyingParty: "http://xboxlive.com")
+            let home = try await requestMSALXSTS(userToken: xboxUserToken, relyingParty: "http://gssv.xboxlive.com/")
+            let cloudInfo = try await requestCloudStreamingToken(xstsToken: home.token)
+            let homeInfo = try await requestHomeStreamingToken(xstsToken: home.token)
+
+            let profile = XboxAccountProfile(
+                id: web.xboxUserID,
+                gamertag: web.gamertag,
+                userHash: web.userHash
+            )
+            try SecureTokenStore.save(web.token, account: "xbl.msal.web-xsts")
+            try SecureTokenStore.save(home.token, account: "xbl.msal.home-xsts")
+            try SecureTokenStore.save(homeInfo.gsToken, account: "xbl.msal.home-gs-token")
+            try SecureTokenStore.save(cloudInfo.gsToken, account: "xbl.cloud-stream-token")
+            try SecureTokenStore.save(profile.gamertag, account: "xbl.profile-gamertag")
+            try SecureTokenStore.save(profile.id, account: "xbl.profile-xuid")
+            try SecureTokenStore.save(profile.userHash, account: "xbl.profile-user-hash")
+
+            cloudTokenExpiry = Date().addingTimeInterval(TimeInterval(min(cloudInfo.durationInSeconds, homeInfo.durationInSeconds)))
+            try SecureTokenStore.save(String(cloudTokenExpiry!.timeIntervalSince1970), account: "xbl.cloud-token-expiry")
+            availableRegions = cloudInfo.regions
+            try saveRegions(cloudInfo.regions)
+            if let saved = UserDefaults.standard.string(forKey: "xbl.selected-region"),
+               cloudInfo.regions.contains(where: { $0.name == saved }) {
+                selectedRegionName = saved
+            } else {
+                selectedRegionName = nil
+            }
+            account = profile
+            statusMessage = "Signed in — Microsoft Device Code"
+        } catch {
+            statusMessage = "Device-code sign-in failed"
+            errorMessage = error.localizedDescription
+            throw error
+        }
+    }
+
+    func cancelDeviceCodeSignIn() {
+        deviceCodeCancelled = true
+        deviceCodeRequest = nil
+        statusMessage = "Cancelling Microsoft sign-in…"
+    }
+
+    private func requestMicrosoftDeviceCode() async throws -> MicrosoftDeviceCode {
+        let url = URL(string: "https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.httpBody = Data(formEncoded([
+            "client_id": Constants.msalClientID,
+            "scope": Constants.msalScopes
+        ]).utf8)
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.setValue("no-store, must-revalidate, no-cache", forHTTPHeaderField: "Cache-Control")
+        let object = try jsonObject(await perform(request))
+        guard let code = object["device_code"] as? String, !code.isEmpty,
+              let userCode = object["user_code"] as? String, !userCode.isEmpty,
+              let rawURL = object["verification_uri"] as? String,
+              let verificationURL = URL(string: rawURL),
+              let expiresIn = object["expires_in"] as? Int else {
+            throw XboxAuthenticationError.invalidResponse
+        }
+        return MicrosoftDeviceCode(
+            deviceCode: code,
+            userCode: userCode,
+            verificationURL: verificationURL,
+            verificationURLComplete: (object["verification_uri_complete"] as? String).flatMap(URL.init(string:)),
+            expiresAt: Date().addingTimeInterval(TimeInterval(expiresIn)),
+            interval: max(1, object["interval"] as? Int ?? 5),
+            message: object["message"] as? String ?? "Open microsoft.com/devicelogin and enter the code."
+        )
+    }
+
+    private func pollMicrosoftDeviceCode(_ challenge: MicrosoftDeviceCode) async throws -> UserOAuthToken {
+        var interval = challenge.interval
+        let url = URL(string: "https://login.microsoftonline.com/consumers/oauth2/v2.0/token")!
+        while Date() < challenge.expiresAt {
+            if deviceCodeCancelled { throw XboxAuthenticationError.userCancelled }
+            try await Task.sleep(nanoseconds: UInt64(interval) * 1_000_000_000)
+            if deviceCodeCancelled { throw XboxAuthenticationError.userCancelled }
+
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.httpBody = Data(formEncoded([
+                "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                "client_id": Constants.msalClientID,
+                "device_code": challenge.deviceCode
+            ]).utf8)
+            request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+            request.setValue("no-store, must-revalidate, no-cache", forHTTPHeaderField: "Cache-Control")
+
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else { throw XboxAuthenticationError.invalidResponse }
+            let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+            if (200..<300).contains(http.statusCode) {
+                return UserOAuthToken(
+                    accessToken: try string(object, "access_token"),
+                    refreshToken: try string(object, "refresh_token")
+                )
+            }
+
+            let error = object["error"] as? String ?? "unknown_error"
+            switch error {
+            case "authorization_pending":
+                statusMessage = "Waiting for Microsoft approval…"
+                continue
+            case "slow_down":
+                interval += 5
+                continue
+            case "authorization_declined", "access_denied":
+                throw XboxAuthenticationError.userCancelled
+            case "expired_token":
+                throw XboxAuthenticationError.deviceCodeExpired
+            default:
+                let description = object["error_description"] as? String ?? error
+                throw XboxAuthenticationError.serverRejected(http.statusCode, "Microsoft device-code token: " + String(description.prefix(180)))
+            }
+        }
+        throw XboxAuthenticationError.deviceCodeExpired
+    }
+
+    private func authenticateMicrosoftTokenWithXbox(_ accessToken: String) async throws -> String {
+        let url = URL(string: "https://user.auth.xboxlive.com/user/authenticate")!
+        let payload: [String: Any] = [
+            "Properties": [
+                "AuthMethod": "RPS",
+                "SiteName": "user.auth.xboxlive.com",
+                "RpsTicket": "d=" + accessToken
+            ],
+            "RelyingParty": "http://auth.xboxlive.com",
+            "TokenType": "JWT"
+        ]
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("1", forHTTPHeaderField: "x-xbl-contract-version")
+        request.setValue("no-store, must-revalidate, no-cache", forHTTPHeaderField: "Cache-Control")
+        return try requiredString(await perform(request), path: ["Token"])
+    }
+
+    private func requestMSALXSTS(userToken: String, relyingParty: String) async throws -> MSALXSTSResult {
+        let url = URL(string: "https://xsts.auth.xboxlive.com/xsts/authorize")!
+        let payload: [String: Any] = [
+            "Properties": ["SandboxId": "RETAIL", "UserTokens": [userToken]],
+            "RelyingParty": relyingParty,
+            "TokenType": "JWT"
+        ]
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("1", forHTTPHeaderField: "x-xbl-contract-version")
+        request.setValue("no-store, must-revalidate, no-cache", forHTTPHeaderField: "Cache-Control")
+        request.setValue("https://www.xbox.com", forHTTPHeaderField: "Origin")
+        request.setValue("https://www.xbox.com/", forHTTPHeaderField: "Referer")
+        let object = try jsonObject(await perform(request))
+        let claims = object["DisplayClaims"] as? [String: Any] ?? [:]
+        let xui = claims["xui"] as? [[String: Any]] ?? []
+        guard let first = xui.first,
+              let xuid = first["xid"] as? String, !xuid.isEmpty,
+              let userHash = first["uhs"] as? String, !userHash.isEmpty else {
+            throw XboxAuthenticationError.missingValue("Xbox profile claims")
+        }
+        return MSALXSTSResult(
+            token: try string(object, "Token"),
+            xboxUserID: xuid,
+            userHash: userHash,
+            gamertag: (first["mgt"] as? String) ?? (first["gtg"] as? String) ?? "Xbox Player"
+        )
+    }
+
+    private func refreshMSALSession() async throws {
+        guard let refreshToken = try SecureTokenStore.load(account: "xbl.msal.refresh-token") else {
+            throw XboxAuthenticationError.missingValue("Microsoft Device Code refresh token")
+        }
+        let url = URL(string: "https://login.microsoftonline.com/consumers/oauth2/v2.0/token")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.httpBody = Data(formEncoded([
+            "client_id": Constants.msalClientID,
+            "grant_type": "refresh_token",
+            "refresh_token": refreshToken,
+            "scope": Constants.msalScopes
+        ]).utf8)
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.setValue("no-store, must-revalidate, no-cache", forHTTPHeaderField: "Cache-Control")
+        let object = try jsonObject(await perform(request))
+        let accessToken = try string(object, "access_token")
+        let updatedRefresh = (object["refresh_token"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? refreshToken
+        try SecureTokenStore.save(accessToken, account: "xbl.msal.access-token")
+        try SecureTokenStore.save(updatedRefresh, account: "xbl.msal.refresh-token")
+
+        let xboxUserToken = try await authenticateMicrosoftTokenWithXbox(accessToken)
+        try SecureTokenStore.save(xboxUserToken, account: "xbl.msal.xbox-user-token")
+        let web = try await requestMSALXSTS(userToken: xboxUserToken, relyingParty: "http://xboxlive.com")
+        let home = try await requestMSALXSTS(userToken: xboxUserToken, relyingParty: "http://gssv.xboxlive.com/")
+        let cloudInfo = try await requestCloudStreamingToken(xstsToken: home.token)
+        let homeInfo = try await requestHomeStreamingToken(xstsToken: home.token)
+        let profile = XboxAccountProfile(id: web.xboxUserID, gamertag: web.gamertag, userHash: web.userHash)
+
+        try SecureTokenStore.save(web.token, account: "xbl.msal.web-xsts")
+        try SecureTokenStore.save(home.token, account: "xbl.msal.home-xsts")
+        try SecureTokenStore.save(homeInfo.gsToken, account: "xbl.msal.home-gs-token")
+        try SecureTokenStore.save(cloudInfo.gsToken, account: "xbl.cloud-stream-token")
+        try SecureTokenStore.save(profile.gamertag, account: "xbl.profile-gamertag")
+        try SecureTokenStore.save(profile.id, account: "xbl.profile-xuid")
+        try SecureTokenStore.save(profile.userHash, account: "xbl.profile-user-hash")
+        cloudTokenExpiry = Date().addingTimeInterval(TimeInterval(min(cloudInfo.durationInSeconds, homeInfo.durationInSeconds)))
+        try SecureTokenStore.save(String(cloudTokenExpiry!.timeIntervalSince1970), account: "xbl.cloud-token-expiry")
+        availableRegions = cloudInfo.regions
+        try saveRegions(cloudInfo.regions)
+        account = profile
+        statusMessage = "Xbox account refreshed"
     }
 
     func signIn(email: String) async throws {
@@ -878,7 +1128,7 @@ struct XboxConsoleRemotePlayCredentials {
     let userHash: String
 }
 
-private struct UserOAuthToken {
+private struct MicrosoftDeviceCode: Identifiable {\n    let id = UUID()\n    let deviceCode: String\n    let userCode: String\n    let verificationURL: URL\n    let verificationURLComplete: URL?\n    let expiresAt: Date\n    let interval: Int\n    let message: String\n}\n\nprivate struct MSALXSTSResult {\n    let token: String\n    let xboxUserID: String\n    let userHash: String\n    let gamertag: String\n}\n\nprivate struct UserOAuthToken {
     let accessToken: String
     let refreshToken: String
 }
