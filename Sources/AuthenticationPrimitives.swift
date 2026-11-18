@@ -5,6 +5,7 @@ import Security
 enum AuthenticationPrimitiveError: Error, LocalizedError {
     case secureRandomFailure(OSStatus)
     case invalidPublicKey
+    case invalidTimestamp
     case invalidUTF8
     case keychainFailure(OSStatus)
 
@@ -14,6 +15,8 @@ enum AuthenticationPrimitiveError: Error, LocalizedError {
             return "Secure random generation failed (\(status))."
         case .invalidPublicKey:
             return "The generated P-256 public key was invalid."
+        case .invalidTimestamp:
+            return "The Xbox proof-signature timestamp was outside the supported range."
         case .invalidUTF8:
             return "The stored token was not valid UTF-8."
         case .keychainFailure(let status):
@@ -91,13 +94,14 @@ struct XBLProofKey {
         date: Date = Date()
     ) throws -> String {
         let path = url.path
-        // XStreaming's Android XalManager parses the JSON body and serializes
-        // its JsonObject with Gson before signing. Gson sorts object keys.
-        // Keep the wire body untouched, but sign the same canonical JSON bytes.
-        let signingBody = try Self.canonicalJSONBody(body)
-        // XStreaming computes Windows time from whole Unix seconds.
-        let unixSeconds = Int64(date.timeIntervalSince1970)
-        let windowsTicks = UInt64(unixSeconds + 11_644_473_600) * 10_000_000
+
+        // Match XStreaming's iOS XalManager: preserve sub-second precision
+        // and sign the exact UTF-8 request body bytes sent over the wire.
+        let timestamp = (date.timeIntervalSince1970 + 11_644_473_600.0) * 10_000_000.0
+        guard timestamp.isFinite, timestamp >= 0, timestamp < Double(UInt64.max) else {
+            throw AuthenticationPrimitiveError.invalidTimestamp
+        }
+        let windowsTicks = UInt64(timestamp)
 
         var signedMessage = Data()
         signedMessage.appendBigEndian(UInt32(1))
@@ -110,7 +114,7 @@ struct XBLProofKey {
         signedMessage.append(0)
         signedMessage.append(contentsOf: authorizationToken.utf8)
         signedMessage.append(0)
-        signedMessage.append(signingBody)
+        signedMessage.append(body)
         signedMessage.append(0)
 
         let signature = try privateKey.signature(for: signedMessage).rawRepresentation
@@ -120,19 +124,6 @@ struct XBLProofKey {
         header.appendBigEndian(windowsTicks)
         header.append(signature)
         return header.base64EncodedString()
-    }
-
-    private static func canonicalJSONBody(_ body: Data) throws -> Data {
-        guard let object = try? JSONSerialization.jsonObject(with: body),
-              JSONSerialization.isValidJSONObject(object) else {
-            return body
-        }
-        // Gson JsonObject serialization in XStreaming uses lexicographically
-        // ordered object members and compact JSON without HTML escaping.
-        return try JSONSerialization.data(
-            withJSONObject: object,
-            options: [.sortedKeys, .withoutEscapingSlashes]
-        )
     }
 }
 
