@@ -397,8 +397,8 @@ final class XboxCloudSessionService {
             let message = String(data: data, encoding: .utf8) ?? "No error details"
             throw CloudSessionServiceError.httpStatus(http.statusCode, message)
         }
-        if T.self == EmptyResponse.self, data.isEmpty {
-            return EmptyResponse() as! T
+        if data.isEmpty, let emptyResponse = EmptyResponse() as? T {
+            return emptyResponse
         }
         do {
             return try JSONDecoder().decode(T.self, from: data)
