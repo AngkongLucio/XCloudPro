@@ -235,7 +235,7 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
             deviceCode: code,
             userCode: userCode,
             verificationURL: verificationURL,
-            verificationURLComplete: (object["verification_uri_complete"] as? String).flatMap(URL.init(string:)),
+            verificationURLComplete: (object["verification_uri_complete"] as? String).flatMap { URL(string: $0) },
             expiresAt: Date().addingTimeInterval(TimeInterval(expiresIn)),
             interval: max(1, object["interval"] as? Int ?? 5),
             message: object["message"] as? String ?? "Open microsoft.com/devicelogin and enter the code."
@@ -1177,7 +1177,7 @@ struct XboxConsoleRemotePlayCredentials {
     let userHash: String
 }
 
-private struct MicrosoftDeviceCode: Identifiable {\n    let id = UUID()\n    let deviceCode: String\n    let userCode: String\n    let verificationURL: URL\n    let verificationURLComplete: URL?\n    let expiresAt: Date\n    let interval: Int\n    let message: String\n}\n\nprivate struct MSALXSTSResult {\n    let token: String\n    let xboxUserID: String\n    let userHash: String\n    let gamertag: String\n}\n\nprivate struct UserOAuthToken {
+struct MicrosoftDeviceCode: Identifiable {\n    let id = UUID()\n    let deviceCode: String\n    let userCode: String\n    let verificationURL: URL\n    let verificationURLComplete: URL?\n    let expiresAt: Date\n    let interval: Int\n    let message: String\n}\n\nprivate struct MSALXSTSResult {\n    let token: String\n    let xboxUserID: String\n    let userHash: String\n    let gamertag: String\n}\n\nprivate struct UserOAuthToken {
     let accessToken: String
     let refreshToken: String
 }
