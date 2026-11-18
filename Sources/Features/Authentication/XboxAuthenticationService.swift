@@ -411,11 +411,12 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
             try SecureTokenStore.delete(account: "xbl.cloud-regions")
             availableRegions = []
             selectedRegionName = nil
+            cloudAvailabilityMessage = "Xbox Home Remote Play is available, but Xbox denied the Cloud Gaming offering."
         }
         account = profile
         statusMessage = cloudInfo == nil
-            ? "Xbox account refreshed — Cloud Gaming unavailable; Remote Play credentials retained"
-            : "Xbox account refreshed"
+            ? "Xbox account refreshed — Remote Play ready; Cloud Gaming unavailable"
+            : "Xbox account refreshed — Remote Play and Cloud Gaming ready"
     }
 
     func signIn(email: String) async throws {
