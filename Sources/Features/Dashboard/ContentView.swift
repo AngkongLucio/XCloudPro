@@ -891,9 +891,13 @@ struct ContentView: View {
         // Present the native player only after the cloud session and initial
         // WebRTC signaling setup succeed. Failed launches remain on Library
         // so the user can read the reported error and retry safely.
-        if appModel.streamCoordinator.lastError == nil,
-           appModel.streamCoordinator.isStarting || appModel.streamCoordinator.isStreaming {
-            showStreamPlayer = true
+        if appModel.streamCoordinator.lastError == nil {
+            switch appModel.streamCoordinator.transport.state {
+            case .idle, .failed:
+                break
+            case .preparing, .connecting, .connected:
+                showStreamPlayer = true
+            }
         }
     }
 
