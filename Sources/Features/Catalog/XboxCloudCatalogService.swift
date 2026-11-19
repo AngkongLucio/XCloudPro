@@ -63,16 +63,19 @@ final class XboxCloudCatalogService {
 
         return titles.map { item in
             let productID = item.details?.productId ?? item.titleId
-            let artworkURL = (
-                metadata[productID]?.imageTile?.url
-                    ?? metadata[productID]?.imagePoster?.url
-                    ?? metadata[productID]?.imageHero?.url
-            ).flatMap(URL.init(string:))
-            let backgroundArtworkURL = (
-                metadata[productID]?.imageHero?.url
-                    ?? metadata[productID]?.imageSuperHero?.url
-                    ?? metadata[productID]?.imageTile?.url
-            ).flatMap(URL.init(string:))
+            let product = metadata[productID]
+            let artworkURL = normalizedArtworkURL(
+                product?.imageTile?.url
+                    ?? product?.imagePoster?.url
+                    ?? product?.imageHero?.url
+                    ?? product?.imageSuperHero?.url
+            )
+            let backgroundArtworkURL = normalizedArtworkURL(
+                product?.imageHero?.url
+                    ?? product?.imageSuperHero?.url
+                    ?? product?.imagePoster?.url
+                    ?? product?.imageTile?.url
+            )
             return CloudGame(
                 id: item.titleId,
                 title: metadata[productID]?.productTitle
@@ -83,6 +86,27 @@ final class XboxCloudCatalogService {
                 supportsCloudPlay: item.details?.hasEntitlement ?? false
             )
         }
+    }
+
+    /// Xbox catalog payloads can contain protocol-relative image URLs. AsyncImage
+    /// needs an absolute URL, so normalize those before passing them to SwiftUI.
+    private func normalizedArtworkURL(_ rawValue: String?) -> URL? {
+        guard let rawValue else { return nil }
+        let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return nil }
+
+        if value.hasPrefix("//") {
+            return URL(string: "https:\\(value)")
+        }
+        if value.lowercased().hasPrefix("http://") {
+            return URL(string: "https://" + value.dropFirst("http://".count))
+        }
+        guard let url = URL(string: value),
+              url.scheme?.lowercased() == "https",
+              url.host != nil else {
+            return nil
+        }
+        return url
     }
 
     private func fetchProductMetadata(titleIDs: [String]) async throws -> [String: XboxProductMetadata] {
