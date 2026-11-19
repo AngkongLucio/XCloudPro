@@ -50,7 +50,7 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
         preferredVideoWidth = min(max(width, 640), 2560)
         preferredVideoHeight = min(max(height, 360), 1440)
         preferredMaxFPS = min(max(maxFPS, 30), 60)
-        preferredMaxVideoBitrateBps = maxVideoBitrateBps.map { min(max($0, 250_000), 14_000_000) }
+        preferredMaxVideoBitrateBps = maxVideoBitrateBps.map { min(max($0, 250_000), 50_000_000) }
         ultraLatencyEnabled = ultraLatency
     }
 
