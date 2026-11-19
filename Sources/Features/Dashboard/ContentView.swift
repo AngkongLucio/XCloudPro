@@ -30,6 +30,47 @@ private enum ConsolePalette {
     static let muted = Color.white.opacity(0.56)
 }
 
+
+/// Uses the official Xbox Cloud Gaming web asset as a subtle dashboard wallpaper.
+/// The dark overlays keep dashboard text/cards readable and the fallback is fully offline.
+private struct XboxCloudBackdrop: View {
+    private let imageURL = URL(string: "https://assets.play.xbox.com/playxbox/static/media/Byog_Bkg.141f84eb.jpg")!
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack {
+                ConsolePalette.background
+                AsyncImage(url: imageURL, transaction: Transaction(animation: .easeInOut(duration: 0.25))) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                            .clipped()
+                    case .empty, .failure:
+                        ConsolePalette.background
+                    @unknown default:
+                        ConsolePalette.background
+                    }
+                }
+                .overlay(Color.black.opacity(0.68))
+                .overlay {
+                    LinearGradient(
+                        colors: [Color.black.opacity(0.28), ConsolePalette.background.opacity(0.68), ConsolePalette.background.opacity(0.92)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                }
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .clipped()
+        }
+        .background(ConsolePalette.background)
+        .accessibilityHidden(true)
+    }
+}
+
 struct ContentView: View {
     @EnvironmentObject private var controllerManager: ControllerManager
     @EnvironmentObject private var authenticationService: XboxAuthenticationService
@@ -79,10 +120,10 @@ struct ContentView: View {
                         }
                     }
                 }
-                .background(ConsolePalette.background)
+                .background { XboxCloudBackdrop() }
             }
         }
-        .background(ConsolePalette.background.ignoresSafeArea())
+        .background(XboxCloudBackdrop().ignoresSafeArea())
         .preferredColorScheme(.dark)
         .onAppear {
             appModel.attachControllerManager()
