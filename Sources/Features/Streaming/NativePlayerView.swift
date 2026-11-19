@@ -78,6 +78,23 @@ struct NativePlayerView: View {
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.white.opacity(0.65))
 
+            VStack(alignment: .leading, spacing: 6) {
+                Text("MEDIA DIAGNOSTICS")
+                    .font(.system(size: 10, weight: .black))
+                    .tracking(1.2)
+                    .foregroundStyle(Color.green)
+                Text(coordinator.transport.mediaDiagnostics)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Audio: \(coordinator.transport.remoteAudioTrackPresent ? "TRACK" : "NONE")  •  Video: \(coordinator.transport.remoteVideoTrackPresent ? "TRACK" : "NONE")")
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.6))
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
+
             Button(role: .destructive) {
                 Task {
                     await coordinator.stop()
