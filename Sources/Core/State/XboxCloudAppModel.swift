@@ -56,7 +56,8 @@ final class XboxCloudAppModel: ObservableObject {
     func startCloudGame(
         _ game: CloudGame,
         targetResolution: String,
-        preferredFPS: String
+        preferredFPS: String,
+        clientProfile: String = "ipad"
     ) async {
         guard !isStartingGame, authenticationService.account != nil else { return }
         isStartingGame = true
@@ -70,8 +71,9 @@ final class XboxCloudAppModel: ObservableObject {
                 titleID: game.id,
                 regionBaseURL: credentials.region.baseURI,
                 gsToken: credentials.gsToken,
-                osName: "windows",
-                deviceInfoHeader: makeDeviceInfoHeader(),
+                osName: clientProfile == "xbox-series-x" ? "xbox" : "windows",
+                deviceInfoHeader: makeDeviceInfoHeader(for: clientProfile),
+                userAgent: makeUserAgent(for: clientProfile),
                 videoWidth: targetResolution == "720p" ? 1280 : 1920,
                 videoHeight: targetResolution == "720p" ? 720 : 1080,
                 maxFPS: Int(preferredFPS) ?? 60,
@@ -157,10 +159,15 @@ final class XboxCloudAppModel: ObservableObject {
         isStartingGame = false
     }
 
-    private func makeDeviceInfoHeader() -> String {
-        // Keep the existing Xbox Cloud web-client compatibility profile unchanged
-        // during this structural migration. Device-profile work is a separate
-        // protocol-validation step, not a UI or architecture rewrite.
+    private func makeUserAgent(for profile: String) -> String {
+        if profile == "xbox-series-x" {
+            return "Mozilla/5.0 (Xbox; Xbox Series X) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0"
+        }
+        return "Mozilla/5.0 (iPad; CPU OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1"
+    }
+
+    private func makeDeviceInfoHeader(for profile: String) -> String {
+        let isXboxSeriesX = profile == "xbox-series-x"
         let info: [String: Any] = [
             "appInfo": [
                 "env": [
@@ -175,13 +182,13 @@ final class XboxCloudAppModel: ObservableObject {
             "dev": [
                 "hw": [
                     "make": "Microsoft",
-                    "model": "unknown",
+                    "model": isXboxSeriesX ? "Xbox Series X" : "iPad",
                     "sdktype": "web"
                 ],
                 "os": [
-                    "name": "windows",
-                    "ver": "22631.2715",
-                    "platform": "desktop"
+                    "name": isXboxSeriesX ? "Xbox" : "windows",
+                    "ver": isXboxSeriesX ? "10.0" : "22631.2715",
+                    "platform": isXboxSeriesX ? "console" : "desktop"
                 ],
                 "displayInfo": [
                     "dimensions": [
@@ -194,7 +201,7 @@ final class XboxCloudAppModel: ObservableObject {
                     ]
                 ],
                 "browser": [
-                    "browserName": "chrome",
+                    "browserName": isXboxSeriesX ? "Edge" : "Chrome",
                     "browserVersion": "130.0"
                 ]
             ]
@@ -202,5 +209,4 @@ final class XboxCloudAppModel: ObservableObject {
         guard let data = try? JSONSerialization.data(withJSONObject: info, options: [.sortedKeys]),
               let value = String(data: data, encoding: .utf8) else { return "{}" }
         return value
-    }
-}
+    }}
