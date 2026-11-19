@@ -973,11 +973,11 @@ struct ContentView: View {
                 Slider(value: Binding(
                     get: { Double(maxVideoBitrateMbps) },
                     set: { maxVideoBitrateMbps = Int($0.rounded()) }
-                ), in: 1...14, step: 1)
+                ), in: 1...50, step: 1)
                 HStack {
                     Text("1 Mbps")
                     Spacer()
-                    Text("14 Mbps max")
+                    Text("50 Mbps max")
                 }
                 .font(.system(size: 9, weight: .medium, design: .monospaced))
                 .foregroundStyle(ConsolePalette.muted)
