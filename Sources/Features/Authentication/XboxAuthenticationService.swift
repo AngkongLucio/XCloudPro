@@ -241,6 +241,7 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
         ]).utf8)
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.setValue("no-store, must-revalidate, no-cache", forHTTPHeaderField: "Cache-Control")
+        applyCloudRegionHint(to: &request)
         let object = try jsonObject(await perform(request))
         guard let code = object["device_code"] as? String, !code.isEmpty,
               let userCode = object["user_code"] as? String, !userCode.isEmpty,
@@ -277,6 +278,7 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
             ]).utf8)
             request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
             request.setValue("no-store, must-revalidate, no-cache", forHTTPHeaderField: "Cache-Control")
+            applyCloudRegionHint(to: &request)
 
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse else { throw XboxAuthenticationError.invalidResponse }
@@ -325,6 +327,7 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("1", forHTTPHeaderField: "x-xbl-contract-version")
         request.setValue("no-store, must-revalidate, no-cache", forHTTPHeaderField: "Cache-Control")
+        applyCloudRegionHint(to: &request)
         return try requiredString(await perform(request), path: ["Token"])
     }
 
@@ -343,6 +346,7 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
         request.setValue("no-store, must-revalidate, no-cache", forHTTPHeaderField: "Cache-Control")
         request.setValue("https://www.xbox.com", forHTTPHeaderField: "Origin")
         request.setValue("https://www.xbox.com/", forHTTPHeaderField: "Referer")
+        applyCloudRegionHint(to: &request)
         let object = try jsonObject(await perform(request))
         let claims = object["DisplayClaims"] as? [String: Any] ?? [:]
         let xui = claims["xui"] as? [[String: Any]] ?? []
@@ -377,6 +381,7 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
         ]).utf8)
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.setValue("no-store, must-revalidate, no-cache", forHTTPHeaderField: "Cache-Control")
+        applyCloudRegionHint(to: &request)
         let object = try jsonObject(await perform(request))
         let accessToken = try string(object, "access_token")
         let updatedRefresh = (object["refresh_token"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? refreshToken
@@ -1115,6 +1120,24 @@ final class XboxAuthenticationService: NSObject, ObservableObject {
         ]
         let data = try await signedJSONRequest(url: url, payload: payload, using: key)
         return try requiredString(data, path: ["Token"])
+    }
+
+    /// Mirrors XStreaming's force-region hint across the Microsoft/Xbox
+    /// authentication requests as well as the final GSSV offering request.
+    /// This is only an HTTP forwarding hint; it does not change the device's
+    /// network route or guarantee that Xbox will grant Cloud Gaming access.
+    private func applyCloudRegionHint(to request: inout URLRequest) {
+        let region = UserDefaults.standard.string(forKey: "xcloudpro.regionBypass") ?? "off"
+        let ips: [String: String] = [
+            "br": "169.150.198.66",
+            "kr": "121.125.60.151",
+            "jp": "138.199.21.239",
+            "pl": "45.134.212.66",
+            "us": "143.244.47.65"
+        ]
+        if let ip = ips[region] {
+            request.setValue(ip, forHTTPHeaderField: "X-Forwarded-For")
+        }
     }
 
     private func requestCloudStreamingToken(xstsToken: String) async throws -> CloudStreamingToken {
