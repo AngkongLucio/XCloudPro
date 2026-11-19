@@ -949,16 +949,12 @@ struct ContentView: View {
                 .font(.system(size: 10)).foregroundStyle(ConsolePalette.muted)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 4)
-            settingsPicker("Video aspect ratio", detail: "Changes the native video viewport; non-16:9 ratios crop the image", selection: $videoAspect, options: [("16:9", "16:9 · Original"), ("16:10", "16:10"), ("18:9", "18:9"), ("20:9", "20:9"), ("21:9", "21:9 Ultrawide"), ("3:2", "3:2"), ("4:3", "4:3"), ("5:4", "5:4"), ("fill", "Fill screen")], icon: "aspectratio")
+            settingsPicker("Video aspect ratio", detail: "Changes the native video viewport; non-16:9 ratios crop the image", selection: $videoAspect, options: [("fit", "16:9 · Original"), ("16:10", "16:10"), ("18:9", "18:9"), ("20:9", "20:9"), ("21:9", "21:9 Ultrawide"), ("3:2", "3:2"), ("4:3", "4:3"), ("5:4", "5:4"), ("fill", "Fill screen")], icon: "aspectratio")
             settingsInfo("App version", value: appVersion, icon: "number")
             settingsInfo("Controller", value: controllerManager.statusText, icon: "gamecontroller")
             settingsInfo("Streaming engine", value: "Xbox Cloud API + native WebRTC", icon: "waveform.path")
             settingsInfo("Gameplay renderer", value: "Native Metal-backed video surface", icon: "display")
-            Text("Resolution, bitrate, codec, and frame-rate controls will be shown only when the native streaming backend exposes and supports them.")
-                .font(.system(size: 11)).foregroundStyle(ConsolePalette.muted)
-                .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-                .background(ConsolePalette.surface, in: RoundedRectangle(cornerRadius: 14))
-        }
+         }
     }
 
     private var settingsBitrateControl: some View {
