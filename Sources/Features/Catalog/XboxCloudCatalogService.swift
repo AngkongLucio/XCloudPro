@@ -57,13 +57,22 @@ final class XboxCloudCatalogService {
     }
 
     private func mapGames(_ titles: [XboxCloudTitle]) async -> [CloudGame] {
-        // The catalog product endpoint expects product IDs, not Xbox title IDs.
-        let productIDs = titles.compactMap { $0.details?.productId }
+        // Xbox's catalog endpoint is keyed by StoreId (the same value as
+        // details.productId), not by the Xbox titleId.
+        let productIDs = Array(Set(titles.compactMap { title -> String? in
+            guard let value = title.details?.productId?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !value.isEmpty else { return nil }
+            return value
+        }))
         let metadata = (try? await fetchProductMetadata(titleIDs: productIDs)) ?? [:]
 
         return titles.map { item in
-            let productID = item.details?.productId ?? item.titleId
-            let product = metadata[productID]
+            let productID = item.details?.productId?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let product = productID.flatMap { id in
+                metadata[id] ?? metadata.first(where: {
+                    $0.key.caseInsensitiveCompare(id) == .orderedSame
+                })?.value
+            }
             let artworkURL = normalizedArtworkURL(
                 product?.imageTile?.url
                     ?? product?.imagePoster?.url
@@ -78,7 +87,7 @@ final class XboxCloudCatalogService {
             )
             return CloudGame(
                 id: item.titleId,
-                title: metadata[productID]?.productTitle
+                title: product?.productTitle
                     ?? item.details?.name
                     ?? item.titleId.replacingOccurrences(of: "_", with: " "),
                 artworkURL: artworkURL,
@@ -110,13 +119,16 @@ final class XboxCloudCatalogService {
     }
 
     private func fetchProductMetadata(titleIDs: [String]) async throws -> [String: XboxProductMetadata] {
-        guard !titleIDs.isEmpty else { return [:] }
+        let uniqueIDs = Array(Set(titleIDs.map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        }.filter { !$0.isEmpty }))
+        guard !uniqueIDs.isEmpty else { return [:] }
         var result: [String: XboxProductMetadata] = [:]
 
         // Keep catalog metadata requests reasonably sized for mobile networks.
-        for start in stride(from: 0, to: titleIDs.count, by: 40) {
-            let end = min(start + 40, titleIDs.count)
-            let batch = Array(titleIDs[start..<end])
+        for start in stride(from: 0, to: uniqueIDs.count, by: 40) {
+            let end = min(start + 40, uniqueIDs.count)
+            let batch = Array(uniqueIDs[start..<end])
             var components = URLComponents(string: "https://catalog.gamepass.com/v3/products")
             components?.queryItems = [
                 URLQueryItem(name: "market", value: market),
@@ -132,7 +144,7 @@ final class XboxCloudCatalogService {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.setValue("0", forHTTPHeaderField: "ms-cv")
             request.setValue("Xbox Cloud Gaming Web", forHTTPHeaderField: "calling-app-name")
-            request.setValue("21.0.0", forHTTPHeaderField: "calling-app-version")
+            request.setValue("26.1.97", forHTTPHeaderField: "calling-app-version")
             request.httpBody = try JSONSerialization.data(withJSONObject: ["Products": batch])
 
             let batchResult: XboxProductMetadataResponse = try await send(request)
@@ -212,50 +224,57 @@ private struct XboxProductMetadataResponse: Decodable {
     let products: [String: XboxProductMetadata]
 
     init(from decoder: Decoder) throws {
-        // The v3 catalog endpoint has returned an array of product records,
-        // a { "Products": [...] } wrapper, a { "Products": { id: record } }
-        // wrapper, and a direct { id: record } dictionary. Normalize all
-        // supported forms to a product-ID keyed map.
+        // Xbox currently returns { "Products": { "<StoreId>": { ... } } }.
+        // Also accept array and casing variants so a response shape change
+        // cannot silently discard every artwork record.
         if var array = try? decoder.unkeyedContainer() {
-            var decoded: [String: XboxProductMetadata] = [:]
-            while !array.isAtEnd {
-                let product = try array.decode(XboxProductMetadata.self)
-                if let id = product.productID, !id.isEmpty {
-                    decoded[id] = product
-                }
-            }
-            products = decoded
+            products = try Self.decodeArray(from: &array)
             return
         }
 
         let container = try decoder.container(keyedBy: DynamicCodingKey.self)
-        let productsKey = DynamicCodingKey(stringValue: "Products")!
-        if container.contains(productsKey) {
+        if let productsKey = container.allKeys.first(where: {
+            $0.stringValue.caseInsensitiveCompare("Products") == .orderedSame
+        }) {
             let nested = try container.superDecoder(forKey: productsKey)
             products = try Self.decodeProducts(from: nested)
-            return
+        } else {
+            products = try Self.decodeDictionary(from: decoder)
         }
-        products = try Self.decodeDictionary(from: decoder)
     }
 
     private static func decodeProducts(from decoder: Decoder) throws -> [String: XboxProductMetadata] {
         if var array = try? decoder.unkeyedContainer() {
-            var decoded: [String: XboxProductMetadata] = [:]
-            while !array.isAtEnd {
-                let product = try array.decode(XboxProductMetadata.self)
-                if let id = product.productID, !id.isEmpty { decoded[id] = product }
-            }
-            return decoded
+            return try decodeArray(from: &array)
         }
         return try decodeDictionary(from: decoder)
+    }
+
+    private static func decodeArray(
+        from array: inout UnkeyedDecodingContainer
+    ) throws -> [String: XboxProductMetadata] {
+        var decoded: [String: XboxProductMetadata] = [:]
+        while !array.isAtEnd {
+            let product = try array.decode(XboxProductMetadata.self)
+            if let id = product.productID, !id.isEmpty {
+                decoded[id] = product
+            }
+        }
+        return decoded
     }
 
     private static func decodeDictionary(from decoder: Decoder) throws -> [String: XboxProductMetadata] {
         let container = try decoder.container(keyedBy: DynamicCodingKey.self)
         var decoded: [String: XboxProductMetadata] = [:]
         for key in container.allKeys {
-            if let product = try? container.decode(XboxProductMetadata.self, forKey: key) {
-                decoded[key.stringValue] = product
+            guard let product = try? container.decode(XboxProductMetadata.self, forKey: key) else {
+                continue
+            }
+            // Keep the response dictionary key (the normal Xbox format) and
+            // also index by StoreId/ProductId when the payload supplies one.
+            decoded[key.stringValue] = product
+            if let id = product.productID, !id.isEmpty {
+                decoded[id] = product
             }
         }
         return decoded
@@ -287,11 +306,29 @@ private struct XboxProductMetadata: Decodable {
 
     enum CodingKeys: String, CodingKey {
         case productID = "ProductId"
+        case storeID = "StoreId"
         case productTitle = "ProductTitle"
+        case displayName = "DisplayName"
+        case title = "Title"
+        case name = "Name"
         case imageHero = "Image_Hero"
         case imageSuperHero = "Image_SuperHero"
         case imageTile = "Image_Tile"
         case imagePoster = "Image_Poster"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        productID = try container.decodeIfPresent(String.self, forKey: .storeID)
+            ?? container.decodeIfPresent(String.self, forKey: .productID)
+        productTitle = try container.decodeIfPresent(String.self, forKey: .productTitle)
+            ?? container.decodeIfPresent(String.self, forKey: .displayName)
+            ?? container.decodeIfPresent(String.self, forKey: .title)
+            ?? container.decodeIfPresent(String.self, forKey: .name)
+        imageHero = try container.decodeIfPresent(XboxCatalogImage.self, forKey: .imageHero)
+        imageSuperHero = try container.decodeIfPresent(XboxCatalogImage.self, forKey: .imageSuperHero)
+        imageTile = try container.decodeIfPresent(XboxCatalogImage.self, forKey: .imageTile)
+        imagePoster = try container.decodeIfPresent(XboxCatalogImage.self, forKey: .imagePoster)
     }
 }
 
@@ -300,5 +337,17 @@ private struct XboxCatalogImage: Decodable {
 
     enum CodingKeys: String, CodingKey {
         case url = "URL"
+        case lowercaseURL = "url"
+    }
+
+    init(from decoder: Decoder) throws {
+        if let singleValue = try? decoder.singleValueContainer(),
+           let value = try? singleValue.decode(String.self) {
+            url = value
+            return
+        }
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        url = try container.decodeIfPresent(String.self, forKey: .url)
+            ?? container.decodeIfPresent(String.self, forKey: .lowercaseURL)
     }
 }
