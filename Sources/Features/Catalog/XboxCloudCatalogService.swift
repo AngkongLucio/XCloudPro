@@ -147,8 +147,30 @@ final class XboxCloudCatalogService {
             request.setValue("26.1.97", forHTTPHeaderField: "calling-app-version")
             request.httpBody = try JSONSerialization.data(withJSONObject: ["Products": batch])
 
-            let batchResult: XboxProductMetadataResponse = try await send(request)
-            result.merge(batchResult.products) { _, new in new }
+            // Prefer one efficient batch request. If Xbox rejects the batch or
+            // omits individual records, retry only the missing products using
+            // the same single-product request pattern used by Better xCloud.
+            do {
+                let batchResult: XboxProductMetadataResponse = try await send(request)
+                result.merge(batchResult.products) { _, new in new }
+            } catch {
+                // Fall through to per-product recovery below.
+            }
+
+            let missingIDs = batch.filter { requestedID in
+                !result.keys.contains {
+                    $0.caseInsensitiveCompare(requestedID) == .orderedSame
+                }
+            }
+            for productID in missingIDs {
+                var fallbackRequest = request
+                fallbackRequest.httpBody = try JSONSerialization.data(
+                    withJSONObject: ["Products": [productID]]
+                )
+                if let singleResult = try? await send(fallbackRequest) {
+                    result.merge(singleResult.products) { _, new in new }
+                }
+            }
         }
         return result
     }
