@@ -33,6 +33,7 @@ final class NativeStreamCoordinator: ObservableObject {
         gsToken: String,
         osName: String,
         deviceInfoHeader: String,
+        userAgent: String,
         videoWidth: Int = 1920,
         videoHeight: Int = 1080,
         maxFPS: Int = 60,
@@ -53,6 +54,7 @@ final class NativeStreamCoordinator: ObservableObject {
                 titleID: titleID,
                 osName: osName,
                 deviceInfoHeader: deviceInfoHeader,
+                userAgent: userAgent,
                 userTokenProvider: msalUserTokenProvider
             )
 
