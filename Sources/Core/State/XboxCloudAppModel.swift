@@ -163,7 +163,7 @@ final class XboxCloudAppModel: ObservableObject {
         if profile == "xbox-series-x" {
             return "Mozilla/5.0 (Xbox; Xbox Series X) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0"
         }
-        return "Mozilla/5.0 (iPad; CPU OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1"
+        return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
     }
 
     private func makeDeviceInfoHeader(for profile: String) -> String {
@@ -209,4 +209,5 @@ final class XboxCloudAppModel: ObservableObject {
         guard let data = try? JSONSerialization.data(withJSONObject: info, options: [.sortedKeys]),
               let value = String(data: data, encoding: .utf8) else { return "{}" }
         return value
-    }}
+    }
+}
