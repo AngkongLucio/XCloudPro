@@ -57,7 +57,9 @@ final class XboxCloudAppModel: ObservableObject {
         _ game: CloudGame,
         targetResolution: String,
         preferredFPS: String,
-        clientProfile: String = "ipad"
+        clientProfile: String = "ipad",
+        maxVideoBitrateBps: Int? = nil,
+        ultraLatency: Bool = false
     ) async {
         guard !isStartingGame, authenticationService.account != nil else { return }
         isStartingGame = true
@@ -74,9 +76,11 @@ final class XboxCloudAppModel: ObservableObject {
                 osName: clientProfile == "xbox-series-x" ? "xbox" : "windows",
                 deviceInfoHeader: makeDeviceInfoHeader(for: clientProfile),
                 userAgent: makeUserAgent(for: clientProfile),
-                videoWidth: targetResolution == "720p" ? 1280 : 1920,
-                videoHeight: targetResolution == "720p" ? 720 : 1080,
+                videoWidth: targetResolution == "720p" ? 1280 : (targetResolution == "1440p" ? 2560 : 1920),
+                videoHeight: targetResolution == "720p" ? 720 : (targetResolution == "1440p" ? 1440 : 1080),
                 maxFPS: Int(preferredFPS) ?? 60,
+                maxVideoBitrateBps: maxVideoBitrateBps,
+                ultraLatency: ultraLatency,
                 msalUserTokenProvider: { [authenticationService] in
                     try await authenticationService.cloudTransferToken()
                 }
@@ -117,7 +121,9 @@ final class XboxCloudAppModel: ObservableObject {
     func startConsoleRemotePlay(
         _ console: XboxConsoleDevice,
         targetResolution: String,
-        preferredFPS: String
+        preferredFPS: String,
+        maxVideoBitrateBps: Int? = nil,
+        ultraLatency: Bool = false
     ) async {
         guard !isStartingGame, authenticationService.account != nil else { return }
         isStartingGame = true
@@ -137,9 +143,11 @@ final class XboxCloudAppModel: ObservableObject {
             await streamCoordinator.startConsoleRemotePlay(
                 using: service,
                 consoleID: console.id,
-                videoWidth: targetResolution == "720p" ? 1280 : 1920,
-                videoHeight: targetResolution == "720p" ? 720 : 1080,
-                maxFPS: Int(preferredFPS) ?? 60
+                videoWidth: targetResolution == "720p" ? 1280 : (targetResolution == "1440p" ? 2560 : 1920),
+                videoHeight: targetResolution == "720p" ? 720 : (targetResolution == "1440p" ? 1440 : 1080),
+                maxFPS: Int(preferredFPS) ?? 60,
+                maxVideoBitrateBps: maxVideoBitrateBps,
+                ultraLatency: ultraLatency
             )
             if let error = streamCoordinator.lastError {
                 gamesError = error
