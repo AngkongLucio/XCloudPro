@@ -6,13 +6,19 @@ struct NativePlayerView: View {
 
     @State private var showQuickMenu = false
     @AppStorage("xcloudpro.showNetworkStats") private var showStats = true
+    @AppStorage("xcloudpro.videoAspect") private var videoAspect = "16:9"
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            NativeWebRTCVideoSurface(transport: coordinator.transport)
-                .ignoresSafeArea()
+            GeometryReader { proxy in
+                let viewport = videoViewport(for: proxy.size)
+                NativeWebRTCVideoSurface(transport: coordinator.transport)
+                    .frame(width: viewport.width, height: viewport.height)
+                    .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
+            }
+            .ignoresSafeArea()
 
             VStack {
                 HStack {
@@ -53,6 +59,23 @@ struct NativePlayerView: View {
             }
         }
         .statusBarHidden()
+    }
+
+    private func videoViewport(for size: CGSize) -> CGSize {
+        guard videoAspect != "fill" else { return size }
+        let ratioParts = videoAspect.split(separator: ":").compactMap { Double($0) }
+        guard ratioParts.count == 2, ratioParts[1] > 0 else {
+            let ratio = 16.0 / 9.0
+            if size.width / size.height > ratio {
+                return CGSize(width: size.height * ratio, height: size.height)
+            }
+            return CGSize(width: size.width, height: size.width / ratio)
+        }
+        let ratio = ratioParts[0] / ratioParts[1]
+        if size.width / size.height > ratio {
+            return CGSize(width: size.height * ratio, height: size.height)
+        }
+        return CGSize(width: size.width, height: size.width / ratio)
     }
 
     private var quickMenu: some View {
