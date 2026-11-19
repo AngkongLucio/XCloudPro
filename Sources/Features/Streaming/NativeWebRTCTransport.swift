@@ -47,8 +47,8 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
     private var ultraLatencyEnabled = false
 
     func setVideoPreference(width: Int, height: Int, maxFPS: Int, maxVideoBitrateBps: Int? = nil, ultraLatency: Bool = false) {
-        preferredVideoWidth = min(max(width, 640), 1920)
-        preferredVideoHeight = min(max(height, 360), 1080)
+        preferredVideoWidth = min(max(width, 640), 2560)
+        preferredVideoHeight = min(max(height, 360), 1440)
         preferredMaxFPS = min(max(maxFPS, 30), 60)
         preferredMaxVideoBitrateBps = maxVideoBitrateBps.map { min(max($0, 250_000), 14_000_000) }
         ultraLatencyEnabled = ultraLatency
