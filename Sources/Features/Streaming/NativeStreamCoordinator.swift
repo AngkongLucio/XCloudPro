@@ -37,6 +37,8 @@ final class NativeStreamCoordinator: ObservableObject {
         videoWidth: Int = 1920,
         videoHeight: Int = 1080,
         maxFPS: Int = 60,
+        maxVideoBitrateBps: Int? = nil,
+        ultraLatency: Bool = false,
         msalUserTokenProvider: @escaping () async throws -> String
     ) async {
         guard !isStarting, !isStreaming, service == nil, consoleRemoteService == nil else { return }
@@ -58,7 +60,7 @@ final class NativeStreamCoordinator: ObservableObject {
                 userTokenProvider: msalUserTokenProvider
             )
 
-            transport.setVideoPreference(width: videoWidth, height: videoHeight, maxFPS: maxFPS)
+            transport.setVideoPreference(width: videoWidth, height: videoHeight, maxFPS: maxFPS, maxVideoBitrateBps: maxVideoBitrateBps, ultraLatency: ultraLatency)
             try await transport.start(using: cloudService)
             isStarting = false
             cloudService.startKeepAlive(
@@ -81,14 +83,16 @@ final class NativeStreamCoordinator: ObservableObject {
         consoleID: String,
         videoWidth: Int = 1920,
         videoHeight: Int = 1080,
-        maxFPS: Int = 60
+        maxFPS: Int = 60,
+        maxVideoBitrateBps: Int? = nil,
+        ultraLatency: Bool = false
     ) async {
         guard !isStarting, !isStreaming, service == nil, consoleRemoteService == nil else { return }
         isStarting = true
         lastError = nil
         do {
             _ = try await consoleService.startConsoleSession(consoleID: consoleID)
-            transport.setVideoPreference(width: videoWidth, height: videoHeight, maxFPS: maxFPS)
+            transport.setVideoPreference(width: videoWidth, height: videoHeight, maxFPS: maxFPS, maxVideoBitrateBps: maxVideoBitrateBps, ultraLatency: ultraLatency)
             try await transport.start(using: consoleService)
             self.consoleRemoteService = consoleService
             isStarting = false
