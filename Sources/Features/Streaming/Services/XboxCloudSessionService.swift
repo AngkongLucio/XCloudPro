@@ -73,6 +73,7 @@ final class XboxCloudSessionService {
         timezoneOffsetMinutes: Int = TimeZone.current.secondsFromGMT() / 60,
         osName: String,
         deviceInfoHeader: String,
+        userAgent: String,
         userTokenProvider: () async throws -> String
     ) async throws -> CloudSessionConfiguration {
         guard !titleID.isEmpty else {
@@ -99,6 +100,7 @@ final class XboxCloudSessionService {
 
         var request = makeRequest(path: "v5/sessions/cloud/play", method: "POST")
         request.setValue(deviceInfoHeader, forHTTPHeaderField: "X-MS-Device-Info")
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         request.httpBody = try JSONEncoder().encode(payload)
 
         let started: StartCloudSessionResponse = try await send(request)
