@@ -61,7 +61,7 @@ final class NativeStreamCoordinator: ObservableObject {
             )
 
             transport.setVideoPreference(width: videoWidth, height: videoHeight, maxFPS: maxFPS, maxVideoBitrateBps: maxVideoBitrateBps, ultraLatency: ultraLatency)
-            try await transport.start(using: cloudService)
+            try await transport.start(using: cloudService, serverDetails: configuration.serverDetails)
             isStarting = false
             cloudService.startKeepAlive(
                 pulseIntervalSeconds: max(30, configuration.keepAlivePulseInSeconds ?? 300)
@@ -91,9 +91,9 @@ final class NativeStreamCoordinator: ObservableObject {
         isStarting = true
         lastError = nil
         do {
-            _ = try await consoleService.startConsoleSession(consoleID: consoleID)
+            let configuration = try await consoleService.startConsoleSession(consoleID: consoleID)
             transport.setVideoPreference(width: videoWidth, height: videoHeight, maxFPS: maxFPS, maxVideoBitrateBps: maxVideoBitrateBps, ultraLatency: ultraLatency)
-            try await transport.start(using: consoleService)
+            try await transport.start(using: consoleService, serverDetails: configuration.serverDetails)
             self.consoleRemoteService = consoleService
             isStarting = false
         } catch {
