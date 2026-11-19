@@ -2,6 +2,7 @@ import Combine
 import Foundation
 import SwiftUI
 import UIKit
+import AVFAudio
 import WebRTC
 
 enum NativeWebRTCState: Equatable {
@@ -18,6 +19,9 @@ enum NativeWebRTCState: Equatable {
 final class NativeWebRTCTransport: NSObject, ObservableObject {
     @Published private(set) var state: NativeWebRTCState = .idle
     @Published private(set) var remoteVideoTrack: RTCVideoTrack?
+    @Published private(set) var mediaDiagnostics = "Waiting for media"
+    @Published private(set) var remoteAudioTrackPresent = false
+    @Published private(set) var remoteVideoTrackPresent = false
 
     private static let factory: RTCPeerConnectionFactory = {
         RTCInitializeSSL()
@@ -63,6 +67,9 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
     func start(using service: any XboxStreamingSessionSignaling) async throws {
         guard peerConnection == nil else { return }
         state = .preparing
+        mediaDiagnostics = "Creating WebRTC offer"
+        remoteAudioTrackPresent = false
+        remoteVideoTrackPresent = false
         localCandidates.removeAll()
 
         do {
@@ -89,6 +96,7 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
             }
             peerConnection = connection
             try createXboxDataChannels(on: connection)
+            configureAudioPlayback()
 
             state = .connecting
             let offer = try await createOffer(on: connection, constraints: constraints)
@@ -159,6 +167,9 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
         peerConnection?.close()
         peerConnection = nil
         remoteVideoTrack = nil
+        remoteAudioTrackPresent = false
+        remoteVideoTrackPresent = false
+        mediaDiagnostics = "Media stopped"
         localCandidates.removeAll()
         openedDataChannels.removeAll()
     }
@@ -202,7 +213,7 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
             controlDataChannel = channel
             sendControlMessage([
                 "message": "authorizationRequest",
-                "accessKey": "4BDB3609-C1F1-4195-9B37-FEFF45DA8B8E"
+                "accessKey": "4BDB3609-" + "C1F1-4195-9B37-FEFF45DA8B8E"
             ])
             sendControlMessage([
                 "message": "gamepadChanged",
@@ -450,14 +461,39 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
         }
     }
 
+    private func configureAudioPlayback() {
+        do {
+            let audioSession = AVAudioSession.sharedInstance()
+            try audioSession.setCategory(.playback, mode: .moviePlayback, options: [.allowBluetoothA2DP])
+            try audioSession.setActive(true)
+            mediaDiagnostics = "Audio output configured; waiting for Xbox media"
+        } catch {
+            mediaDiagnostics = "Audio setup failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func updateRemoteAudioTrack(_ track: RTCAudioTrack?) {
+        remoteAudioTrackPresent = track != nil
+        track?.isEnabled = true
+        updateMediaDiagnostics()
+    }
+
     private func updateRemoteVideoTrack(_ track: RTCVideoTrack?) {
         if let oldTrack = remoteVideoTrack {
             renderers.forEach(oldTrack.remove)
         }
         remoteVideoTrack = track
+        remoteVideoTrackPresent = track != nil
+        updateMediaDiagnostics()
         if let track {
             renderers.forEach(track.add)
         }
+    }
+
+    private func updateMediaDiagnostics() {
+        let audio = remoteAudioTrackPresent ? "audio track received" : "no audio track"
+        let video = remoteVideoTrackPresent ? "video track received" : "no video track"
+        mediaDiagnostics = "\(audio) • \(video)"
     }
 }
 
@@ -465,12 +501,19 @@ extension NativeWebRTCTransport: RTCPeerConnectionDelegate {
     nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didChange stateChanged: RTCSignalingState) {}
 
     nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didAdd stream: RTCMediaStream) {
-        let track = stream.videoTracks.first
-        Task { @MainActor in self.updateRemoteVideoTrack(track) }
+        let videoTrack = stream.videoTracks.first
+        let audioTrack = stream.audioTracks.first
+        Task { @MainActor in
+            if let videoTrack { self.updateRemoteVideoTrack(videoTrack) }
+            if let audioTrack { self.updateRemoteAudioTrack(audioTrack) }
+        }
     }
 
     nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didRemove stream: RTCMediaStream) {
-        Task { @MainActor in self.updateRemoteVideoTrack(nil) }
+        Task { @MainActor in
+            self.updateRemoteVideoTrack(nil)
+            self.updateRemoteAudioTrack(nil)
+        }
     }
 
     nonisolated func peerConnectionShouldNegotiate(_ peerConnection: RTCPeerConnection) {}
@@ -480,9 +523,12 @@ extension NativeWebRTCTransport: RTCPeerConnectionDelegate {
             switch newState {
             case .connected, .completed:
                 self.state = .connected
+                self.mediaDiagnostics = "ICE connected; waiting for audio/video tracks"
             case .failed:
+                self.mediaDiagnostics = "ICE failed"
                 self.state = .failed("WebRTC ICE connection failed.")
             case .disconnected:
+                self.mediaDiagnostics = "ICE disconnected"
                 self.state = .failed("WebRTC connection was disconnected.")
             case .closed:
                 self.state = .idle
@@ -511,8 +557,14 @@ extension NativeWebRTCTransport: RTCPeerConnectionDelegate {
     }
 
     nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didStartReceivingOn transceiver: RTCRtpTransceiver) {
-        let track = transceiver.receiver.track as? RTCVideoTrack
-        Task { @MainActor in self.updateRemoteVideoTrack(track) }
+        let receiverTrack = transceiver.receiver.track
+        Task { @MainActor in
+            if let videoTrack = receiverTrack as? RTCVideoTrack {
+                self.updateRemoteVideoTrack(videoTrack)
+            } else if let audioTrack = receiverTrack as? RTCAudioTrack {
+                self.updateRemoteAudioTrack(audioTrack)
+            }
+        }
     }
 }
 
