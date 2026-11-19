@@ -68,7 +68,7 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
         }
     }
 
-    func start(using service: any XboxStreamingSessionSignaling) async throws {
+    func start(using service: any XboxStreamingSessionSignaling, serverDetails: CloudSessionConfiguration.ServerDetails? = nil) async throws {
         guard peerConnection == nil else { return }
         state = .preparing
         mediaDiagnostics = "Creating WebRTC offer"
@@ -80,7 +80,22 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
             let configuration = RTCConfiguration()
             // Xbox exchanges ICE candidates through its own HTTPS signaling API.
             configuration.sdpSemantics = .unifiedPlan
-            configuration.iceServers = []
+            // Use the STUN endpoint returned by the Xbox session configuration.
+            // Without it, iOS commonly advertises only private host candidates,
+            // which cannot be reached by the remote Xbox streaming host.
+            if let rawSTUN = serverDetails?.stunServerAddress?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !rawSTUN.isEmpty {
+                let stunURL: String
+                if rawSTUN.hasPrefix("stun:") || rawSTUN.hasPrefix("turn:") || rawSTUN.hasPrefix("turns:") {
+                    stunURL = rawSTUN.replacingOccurrences(of: "stun://", with: "stun:")
+                } else {
+                    stunURL = "stun:\(rawSTUN)"
+                }
+                configuration.iceServers = [RTCIceServer(urlStrings: [stunURL])]
+            } else {
+                configuration.iceServers = []
+                mediaDiagnostics = "Xbox session did not provide a STUN server; using host ICE candidates only"
+            }
             configuration.iceCandidatePoolSize = ultraLatencyEnabled ? 1 : 0
             configuration.audioJitterBufferMaxPackets = ultraLatencyEnabled ? 50 : 200
             configuration.audioJitterBufferFastAccelerate = ultraLatencyEnabled
@@ -114,6 +129,17 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
             let answer = try await service.exchangeSDPOffer(offer.sdp)
             let remoteDescription = RTCSessionDescription(type: .answer, sdp: answer.sdp)
             try await setRemoteDescription(remoteDescription, on: connection)
+
+            // Unified Plan can expose receiver tracks before the delegate callback
+            // reaches the main actor. Attach any negotiated tracks immediately as
+            // well as handling didStartReceivingOn below.
+            for transceiver in connection.transceivers {
+                if let videoTrack = transceiver.receiver.track as? RTCVideoTrack {
+                    updateRemoteVideoTrack(videoTrack)
+                } else if let audioTrack = transceiver.receiver.track as? RTCAudioTrack {
+                    updateRemoteAudioTrack(audioTrack)
+                }
+            }
 
             let gathered = try await waitForLocalICE()
             let outgoing = gathered.map {
@@ -515,6 +541,7 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
             renderers.forEach(oldTrack.remove)
         }
         remoteVideoTrack = track
+        track?.isEnabled = true
         remoteVideoTrackPresent = track != nil
         updateMediaDiagnostics()
         if let track {
