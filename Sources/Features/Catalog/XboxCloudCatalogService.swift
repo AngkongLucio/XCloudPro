@@ -167,7 +167,8 @@ final class XboxCloudCatalogService {
                 fallbackRequest.httpBody = try JSONSerialization.data(
                     withJSONObject: ["Products": [productID]]
                 )
-                if let singleResult = try? await send(fallbackRequest) {
+                let singleResult: XboxProductMetadataResponse? = try? await send(fallbackRequest)
+                if let singleResult {
                     result.merge(singleResult.products) { _, new in new }
                 }
             }
