@@ -482,7 +482,7 @@ struct ContentView: View {
                                 selectedCloudGame = game
                             } label: {
                                 VStack(alignment: .leading, spacing: 10) {
-                                    AsyncImage(url: game.artworkURL) { phase in
+                                    AsyncImage(url: game.artworkURL ?? game.backgroundArtworkURL) { phase in
                                         Group {
                                             if let image = phase.image {
                                                 image.resizable().scaledToFill()
