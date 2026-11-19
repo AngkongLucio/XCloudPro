@@ -15,6 +15,7 @@ struct CloudGame: Identifiable, Codable, Equatable {
     let id: String
     let title: String
     let artworkURL: URL?
+    let backgroundArtworkURL: URL?
     let supportsCloudPlay: Bool
 }
 
