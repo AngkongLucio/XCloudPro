@@ -64,7 +64,13 @@ final class XboxCloudCatalogService {
         return titles.map { item in
             let productID = item.details?.productId ?? item.titleId
             let artworkURL = (
+                metadata[productID]?.imageTile?.url
+                    ?? metadata[productID]?.imagePoster?.url
+                    ?? metadata[productID]?.imageHero?.url
+            ).flatMap(URL.init(string:))
+            let backgroundArtworkURL = (
                 metadata[productID]?.imageHero?.url
+                    ?? metadata[productID]?.imageSuperHero?.url
                     ?? metadata[productID]?.imageTile?.url
             ).flatMap(URL.init(string:))
             return CloudGame(
@@ -73,6 +79,7 @@ final class XboxCloudCatalogService {
                     ?? item.details?.name
                     ?? item.titleId.replacingOccurrences(of: "_", with: " "),
                 artworkURL: artworkURL,
+                backgroundArtworkURL: backgroundArtworkURL,
                 supportsCloudPlay: item.details?.hasEntitlement ?? false
             )
         }
@@ -188,12 +195,16 @@ private struct XboxProductMetadataResponse: Decodable {
 private struct XboxProductMetadata: Decodable {
     let productTitle: String?
     let imageHero: XboxCatalogImage?
+    let imageSuperHero: XboxCatalogImage?
     let imageTile: XboxCatalogImage?
+    let imagePoster: XboxCatalogImage?
 
     enum CodingKeys: String, CodingKey {
         case productTitle = "ProductTitle"
         case imageHero = "Image_Hero"
+        case imageSuperHero = "Image_SuperHero"
         case imageTile = "Image_Tile"
+        case imagePoster = "Image_Poster"
     }
 }
 
