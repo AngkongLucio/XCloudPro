@@ -43,11 +43,15 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
     private var preferredVideoWidth = 1920
     private var preferredVideoHeight = 1080
     private var preferredMaxFPS = 60
+    private var preferredMaxVideoBitrateBps: Int?
+    private var ultraLatencyEnabled = false
 
-    func setVideoPreference(width: Int, height: Int, maxFPS: Int) {
+    func setVideoPreference(width: Int, height: Int, maxFPS: Int, maxVideoBitrateBps: Int? = nil, ultraLatency: Bool = false) {
         preferredVideoWidth = min(max(width, 640), 1920)
         preferredVideoHeight = min(max(height, 360), 1080)
         preferredMaxFPS = min(max(maxFPS, 30), 60)
+        preferredMaxVideoBitrateBps = maxVideoBitrateBps.map { min(max($0, 250_000), 14_000_000) }
+        ultraLatencyEnabled = ultraLatency
     }
 
     func attachControllerManager(_ manager: ControllerManager) {
@@ -77,6 +81,9 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
             // Xbox exchanges ICE candidates through its own HTTPS signaling API.
             configuration.sdpSemantics = .unifiedPlan
             configuration.iceServers = []
+            configuration.iceCandidatePoolSize = ultraLatencyEnabled ? 1 : 0
+            configuration.audioJitterBufferMaxPackets = ultraLatencyEnabled ? 50 : 200
+            configuration.audioJitterBufferFastAccelerate = ultraLatencyEnabled
             configuration.continualGatheringPolicy = .gatherOnce
 
             let constraints = RTCMediaConstraints(
@@ -99,7 +106,9 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
             configureAudioPlayback()
 
             state = .connecting
-            let offer = try await createOffer(on: connection, constraints: constraints)
+            let generatedOffer = try await createOffer(on: connection, constraints: constraints)
+            let offerSDP = applyingVideoBitrateCap(to: generatedOffer.sdp)
+            let offer = RTCSessionDescription(type: generatedOffer.type, sdp: offerSDP)
             try await setLocalDescription(offer, on: connection)
 
             let answer = try await service.exchangeSDPOffer(offer.sdp)
@@ -176,6 +185,29 @@ final class NativeWebRTCTransport: NSObject, ObservableObject {
 
     /// The Xbox offer must include the ordered control/input/message/chat
     /// channels before SDP is created; otherwise the server cannot negotiate them.
+    /// Applies a receive-side bandwidth ceiling through the video SDP media section.
+    /// Nil leaves the Xbox adaptive bitrate at its server-selected default.
+    private func applyingVideoBitrateCap(to sdp: String) -> String {
+        guard let bitrate = preferredMaxVideoBitrateBps, bitrate > 0 else { return sdp }
+        let lines = sdp.components(separatedBy: "\n")
+        var output: [String] = []
+        var inVideoSection = false
+        var inserted = false
+
+        for line in lines {
+            if line.hasPrefix("m=") {
+                inVideoSection = line.hasPrefix("m=video")
+                inserted = false
+            }
+            output.append(line)
+            if inVideoSection, !inserted, line.hasPrefix("c=") {
+                output.append("b=AS:\(max(250, bitrate / 1000))")
+                inserted = true
+            }
+        }
+        return output.joined(separator: "\n")
+    }
+
     private func createXboxDataChannels(on connection: RTCPeerConnection) throws {
         let definitions: [(String, String)] = [
             ("control", "controlV1"),
