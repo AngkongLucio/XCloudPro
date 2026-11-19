@@ -80,6 +80,7 @@ struct ContentView: View {
     @State private var showAuthenticationError = false
     @State private var microsoftEmail = ""
     @State private var showStreamPlayer = false
+    @State private var selectedCloudGame: CloudGame?
     @AppStorage("xcloudpro.haptics") private var hapticsEnabled = true
     @AppStorage("xcloudpro.showNetworkStats") private var showNetworkStats = true
     @AppStorage("xcloudpro.targetResolution") private var targetResolution = "1080p"
@@ -472,10 +473,13 @@ struct ContentView: View {
                         .padding(20).frame(maxWidth: .infinity, alignment: .leading)
                         .background(ConsolePalette.surface, in: RoundedRectangle(cornerRadius: 14))
                 } else {
+                    if let selectedGame = selectedCloudGame {
+                        selectedGameHero(selectedGame)
+                    }
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 190), spacing: 12)], spacing: 12) {
                         ForEach(appModel.cloudGames) { game in
                             Button {
-                                Task { await startCloudGame(game) }
+                                selectedCloudGame = game
                             } label: {
                                 VStack(alignment: .leading, spacing: 10) {
                                     AsyncImage(url: game.artworkURL) { phase in
@@ -518,6 +522,45 @@ struct ContentView: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func selectedGameHero(_ game: CloudGame) -> some View {
+        ZStack(alignment: .bottomLeading) {
+            GeometryReader { proxy in
+                AsyncImage(url: game.backgroundArtworkURL ?? game.artworkURL) { phase in
+                    if let image = phase.image {
+                        image.resizable().scaledToFill()
+                    } else {
+                        LinearGradient(colors: [ConsolePalette.elevated, ConsolePalette.surface], startPoint: .topLeading, endPoint: .bottomTrailing)
+                    }
+                }
+                .frame(width: proxy.size.width, height: proxy.size.height)
+                .clipped()
+            }
+            LinearGradient(colors: [.black.opacity(0.05), .black.opacity(0.88)], startPoint: .center, endPoint: .bottom)
+            VStack(alignment: .leading, spacing: 10) {
+                Text("SELECTED GAME").font(.system(size: 9, weight: .black)).tracking(1.5).foregroundStyle(ConsolePalette.green)
+                Text(game.title).font(.system(size: 25, weight: .black, design: .rounded)).foregroundStyle(.white).lineLimit(2)
+                HStack(spacing: 10) {
+                    Button { Task { await startCloudGame(game) } } label: {
+                        Label(appModel.isStartingGame ? "STARTING…" : "PLAY NOW", systemImage: "play.fill")
+                            .font(.system(size: 11, weight: .black)).foregroundStyle(.black)
+                            .padding(.horizontal, 18).padding(.vertical, 12)
+                            .background(ConsolePalette.green, in: Capsule())
+                    }
+                    .buttonStyle(.plain).disabled(appModel.isStartingGame)
+                    Button { selectedCloudGame = nil } label: {
+                        Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                            .padding(12).background(.white.opacity(0.15), in: Circle())
+                    }.buttonStyle(.plain)
+                }
+            }
+            .padding(20)
+        }
+        .frame(height: 220)
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .overlay(RoundedRectangle(cornerRadius: 20).stroke(.white.opacity(0.08), lineWidth: 1))
     }
 
     private var consolePage: some View {
