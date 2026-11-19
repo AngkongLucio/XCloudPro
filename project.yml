@@ -27,6 +27,7 @@ targets:
     info:
       path: Info.plist
       properties:
+        NSMicrophoneUsageDescription: "XCloud Pro uses the microphone for in-game voice chat during cloud gaming sessions when you choose to enable it."
         CFBundleURLTypes:
           - CFBundleURLName: com.angkonglucio.xcloudpro.xal
             CFBundleURLSchemes:
