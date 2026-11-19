@@ -88,6 +88,9 @@ struct ContentView: View {
     @AppStorage("xcloudpro.videoAspect") private var videoAspect = "fit"
     @AppStorage("xcloudpro.regionBypass") private var regionBypass = "off"
     @AppStorage("xcloudpro.clientProfile") private var clientProfile = "ipad"
+    @AppStorage("xcloudpro.maxVideoBitrateMbps") private var maxVideoBitrateMbps = 14
+    @AppStorage("xcloudpro.limitVideoBitrate") private var limitVideoBitrate = false
+    @AppStorage("xcloudpro.ultraLatency") private var ultraLatency = false
 
     private var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0.0"
@@ -938,9 +941,15 @@ struct ContentView: View {
             )
             settingsToggle("Haptic feedback", detail: "Use a light haptic when changing app sections", value: $hapticsEnabled, icon: "iphone.radiowaves.left.and.right")
             settingsToggle("Show stream status badge", detail: "Show the connection badge in the native player", value: $showNetworkStats, icon: "chart.xyaxis.line")
-            settingsPicker("Preferred resolution", detail: "Requests a stream size; Xbox may apply its own limits", selection: $targetResolution, options: [("1080p", "1080p"), ("720p", "720p")], icon: "display")
+            settingsPicker("Preferred resolution", detail: "Requests a stream size; Xbox may apply its own limits", selection: $targetResolution, options: [("720p", "720p"), ("1080p", "1080p"), ("1440p", "1440p · experimental")], icon: "display")
             settingsPicker("Preferred frame rate", detail: "Requests the maximum frame rate for the session", selection: $preferredFPS, options: [("60", "60 FPS"), ("30", "30 FPS")], icon: "speedometer")
-            settingsPicker("Video scaling", detail: "Fit preserves the full image; Fill crops to fill the screen", selection: $videoAspect, options: [("fit", "Fit"), ("fill", "Fill")], icon: "aspectratio")
+            settingsBitrateControl
+            settingsToggle("Ultra latency mode", detail: "Reduces local audio jitter buffering and pre-gathers ICE candidates; may increase stutter on unstable Wi-Fi", value: $ultraLatency, icon: "bolt.fill")
+            Text("1440p is an experimental client request. Xbox Cloud Gaming may ignore it or keep the stream at 1080p. The bitrate slider applies an SDP video bandwidth cap (maximum 14 Mbps); it cannot force Xbox to exceed its server-selected quality. Ultra latency only tunes local WebRTC buffering/setup, not your network ping.")
+                .font(.system(size: 10)).foregroundStyle(ConsolePalette.muted)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 4)
+            settingsPicker("Video aspect ratio", detail: "Changes the native video viewport; non-16:9 ratios crop the image", selection: $videoAspect, options: [("16:9", "16:9 · Original"), ("16:10", "16:10"), ("18:9", "18:9"), ("20:9", "20:9"), ("21:9", "21:9 Ultrawide"), ("3:2", "3:2"), ("4:3", "4:3"), ("5:4", "5:4"), ("fill", "Fill screen")], icon: "aspectratio")
             settingsInfo("App version", value: appVersion, icon: "number")
             settingsInfo("Controller", value: controllerManager.statusText, icon: "gamecontroller")
             settingsInfo("Streaming engine", value: "Xbox Cloud API + native WebRTC", icon: "waveform.path")
@@ -950,6 +959,36 @@ struct ContentView: View {
                 .padding(16).frame(maxWidth: .infinity, alignment: .leading)
                 .background(ConsolePalette.surface, in: RoundedRectangle(cornerRadius: 14))
         }
+    }
+
+    private var settingsBitrateControl: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                Image(systemName: "speedometer").foregroundStyle(ConsolePalette.green).frame(width: 28)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Custom maximum bitrate").font(.system(size: 13, weight: .semibold))
+                    Text(limitVideoBitrate ? "Cap: \\(maxVideoBitrateMbps) Mbps" : "Auto · no client-side cap")
+                        .font(.system(size: 10)).foregroundStyle(ConsolePalette.muted)
+                }
+                Spacer()
+                Toggle("Limit bitrate", isOn: $limitVideoBitrate).labelsHidden().tint(ConsolePalette.green)
+            }
+            if limitVideoBitrate {
+                Slider(value: Binding(
+                    get: { Double(maxVideoBitrateMbps) },
+                    set: { maxVideoBitrateMbps = Int($0.rounded()) }
+                ), in: 1...14, step: 1)
+                HStack {
+                    Text("1 Mbps")
+                    Spacer()
+                    Text("14 Mbps max")
+                }
+                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .foregroundStyle(ConsolePalette.muted)
+            }
+        }
+        .padding(16)
+        .background(ConsolePalette.surface, in: RoundedRectangle(cornerRadius: 14))
     }
 
     private var statusPanel: some View {
@@ -986,7 +1025,9 @@ struct ContentView: View {
             game,
             targetResolution: targetResolution,
             preferredFPS: preferredFPS,
-            clientProfile: clientProfile
+            clientProfile: clientProfile,
+            maxVideoBitrateBps: limitVideoBitrate ? maxVideoBitrateMbps * 1_000_000 : nil,
+            ultraLatency: ultraLatency
         )
         // Present the native player only after the cloud session and initial
         // WebRTC signaling setup succeed. Failed launches remain on Library
