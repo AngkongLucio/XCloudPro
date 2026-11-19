@@ -616,13 +616,14 @@ struct NativeWebRTCVideoSurface: UIViewRepresentable {
 
     func makeUIView(context: Context) -> RTCMTLVideoView {
         let view = RTCMTLVideoView(frame: .zero)
-        view.videoContentMode = videoAspect == "fill" ? .scaleAspectFill : .scaleAspectFit
+        view.videoContentMode = videoAspect == "16:9" || videoAspect == "fit" ? .scaleAspectFit : .scaleAspectFill
         transport.attach(renderer: view)
         return view
     }
 
     func updateUIView(_ uiView: RTCMTLVideoView, context: Context) {
         context.coordinator.transport = transport
+        uiView.videoContentMode = videoAspect == "16:9" || videoAspect == "fit" ? .scaleAspectFit : .scaleAspectFill
         transport.attach(renderer: uiView)
     }
 
