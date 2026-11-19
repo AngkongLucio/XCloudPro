@@ -211,8 +211,36 @@ private struct XboxCloudTitle: Decodable {
 private struct XboxProductMetadataResponse: Decodable {
     let products: [String: XboxProductMetadata]
 
-    enum CodingKeys: String, CodingKey {
-        case products = "Products"
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: DynamicCodingKey.self)
+        let productsKey = DynamicCodingKey(stringValue: "Products")!
+        if container.contains(productsKey) {
+            products = try container.decode([String: XboxProductMetadata].self, forKey: productsKey)
+            return
+        }
+
+        // Xbox catalog deployments have returned both { "Products": { ... } }
+        // and a direct { "<productId>": { ... } } dictionary.
+        var decoded: [String: XboxProductMetadata] = [:]
+        for key in container.allKeys {
+            decoded[key.stringValue] = try container.decode(XboxProductMetadata.self, forKey: key)
+        }
+        products = decoded
+    }
+}
+
+private struct DynamicCodingKey: CodingKey {
+    let stringValue: String
+    let intValue: Int?
+
+    init?(stringValue: String) {
+        self.stringValue = stringValue
+        self.intValue = nil
+    }
+
+    init?(intValue: Int) {
+        self.stringValue = String(intValue)
+        self.intValue = intValue
     }
 }
 
