@@ -913,12 +913,12 @@ struct ContentView: View {
                 detail: "Experimental request identity for cloud-session compatibility testing.",
                 selection: $clientProfile,
                 options: [
-                    ("ipad", "iPad (recommended)"),
+                    ("ipad", "Default web profile (recommended)"),
                     ("xbox-series-x", "Xbox Series X (experimental)")
                 ],
                 icon: "xbox.logo"
             )
-            Text("The Xbox Series X profile changes the cloud-session User-Agent and device metadata only. It does not turn the iPad into an Xbox, change account entitlements, or guarantee GTA VI access.")
+            Text("The Xbox Series X profile sends an experimental custom User-Agent and Xbox device metadata on session creation. It is not a verified official Xbox console identity and cannot change account entitlements or guarantee GTA VI access.")
                 .font(.system(size: 10)).foregroundStyle(ConsolePalette.muted)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 4)
